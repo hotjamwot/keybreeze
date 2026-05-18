@@ -20,12 +20,12 @@ struct ModelOption: Equatable, Hashable, Identifiable, Sendable {
 
 /// Tuning presets keyed by exact Ollama tag. Tags from `GET /api/tags` are merged here; unknown tags get defaults.
 enum ModelRegistry {
-    static let qwen35_2B = ModelOption(
-        id: "qwen35-2b",
-        displayName: "Qwen 3.5 2B",
+    static let qwen25_3B = ModelOption(
+        id: "qwen25-3b",
+        displayName: "Qwen 2.5 3B",
         ollamaId: "qwen2.5:3b",
         maxWords: 12,
-        verbosityBias: 0.2,
+        verbosityBias: 0.3,
         continuationBias: 0.5,
         instructionStrictness: 0.95
     )
@@ -35,18 +35,18 @@ enum ModelRegistry {
         displayName: "Gemma 2 2B",
         ollamaId: "gemma2:2b",
         maxWords: 12,
-        verbosityBias: 0.3,
+        verbosityBias: 0.35,
         continuationBias: 0.4,
         instructionStrictness: 0.9
     )
 
     private static let presetsByOllamaId: [String: ModelOption] = [
-        qwen35_2B.ollamaId: qwen35_2B,
+        qwen25_3B.ollamaId: qwen25_3B,
         gemma2_2B.ollamaId: gemma2_2B,
     ]
 
     /// Default selection before the first successful catalog refresh (or when Ollama is unreachable).
-    static var defaultModel: ModelOption { qwen35_2B }
+    static var defaultModel: ModelOption { gemma2_2B }
 
     /// Resolves an Ollama tag to a `ModelOption`, applying known presets when the tag matches.
     static func option(resolvingOllamaTag tag: String) -> ModelOption {

@@ -5,6 +5,13 @@ enum PromptBuilder {
     /// Minimum **words** we ask the model to emit (fixed product rule).
     static let minCompletionWords = 2
 
+    /// Returns true if the text ends mid-word (no trailing whitespace, last char not punctuation).
+    private static func isMidWord(_ text: String) -> Bool {
+        guard let last = text.unicodeScalars.last else { return false }
+        let terminators = CharacterSet.whitespacesAndNewlines.union(CharacterSet.punctuationCharacters)
+        return !terminators.contains(last)
+    }
+
     /// Produces a short completion prompt: natural continuation only, no meta commentary.
     static func continuationPrompt(for state: EditorState, modelOption: ModelOption) -> String {
         let cappedMax = max(modelOption.maxWords, minCompletionWords)
@@ -12,6 +19,18 @@ enum PromptBuilder {
         let trimmedAfter = state.textAfterCursor.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let style = styleProfileSection(for: modelOption)
+
+        let midWord = isMidWord(trimmedBefore)
+        let wordContinuationRule: String
+        if midWord {
+            wordContinuationRule = """
+            - The user is MID-WORD (no space at end). FIRST complete the current word, then continue with more.
+            """
+        } else {
+            wordContinuationRule = """
+            - The user finished a word (ends with space). Continue with the next natural words.
+            """
+        }
 
         return """
         You are a typing continuation engine, not a chat assistant.
@@ -27,6 +46,8 @@ enum PromptBuilder {
         - OUTPUT ONLY the continuation text (plain text, no markdown).
         - Maximum \(minCompletionWords)–\(cappedMax) words total, then STOP.
         - Match tone, register, and punctuation of the existing fragment exactly.
+        - NEVER repeat the last partial word — just finish it.
+        \(wordContinuationRule)
 
         \(style)
 

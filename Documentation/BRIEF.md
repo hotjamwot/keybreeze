@@ -130,20 +130,22 @@ Ghostwriter/
     └── config.json
 ```
 
-### Keybreeze — implemented layout (Phase 0–1)
+### Keybreeze — implemented layout (Phase 2.5)
 
-This is the **actual** module tree in the Xcode target today (foundation for scheduler + ghost text later):
+This is the **actual** module tree in the Xcode target today (live typing, ghost text, runtime tuning):
 
 ```text
 Keybreeze/
 ├── App/                 # KeybreezeApp, AppKit lifecycle (menu bar agent)
-├── Core/                # EditorState, AppState, ModelRegistry / ModelOption
-├── LLM/                 # LLMProvider, OllamaLLMService, OllamaConfiguration, PromptBuilder
-├── UI/                  # Menu bar window, “Test Prediction” harness
-└── Utils/               # WordLimiter, KeybreezeLatencyLogger ([KeybreezeLatency] console lines)
+├── Core/                # EditorState, AppState, ModelRegistry, ContextBuilder,
+│                        # PredictionMode, PredictionEngine, PredictionScheduler
+├── LLM/                 # LLMProvider, OllamaLLMService, OllamaConfiguration,
+│                        # OllamaModelCatalog, PromptBuilder
+├── UI/                  # MenuBarContentView, PredictionSessionViewModel
+└── Utils/               # WordLimiter, Debouncer, KeybreezeLatencyLogger
 ```
 
-**Model control:** `ModelRegistry` lists available local models (display name + Ollama tag + per-model `maxWords`). `AppState.selectedModel` drives the next request. **Latency:** each test run logs TTFT and total wall time under `[KeybreezeLatency]` for later tuning.
+**Model control:** `ModelRegistry` lists available local models (display name + Ollama tag + per-model `maxWords`). `AppState.selectedModel` drives the next request. **Latency:** each run logs TTFT and total wall time under `[KeybreezeLatency]` for later tuning. **Ghost text:** rendered as an overlay on a plain-style TextField inside the menu bar window. **Runtime tuning:** sliders for verbosity, continuation strictness, and instruction adherence override model presets on the fly.
 
 ---
 

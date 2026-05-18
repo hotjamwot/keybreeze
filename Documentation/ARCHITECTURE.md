@@ -4,7 +4,7 @@ This document is for humans and coding agents who need to change the project wit
 
 ## What Keybreeze is
 
-A **macOS menu bar app** that will provide **local, low-latency text continuation** (autocomplete), not a chat assistant. Today it uses **Ollama** over HTTP for inference and includes a **live typing harness** plus a one-shot test button in the menu bar window.
+A **macOS menu bar app** that provides **local, low-latency text continuation** (autocomplete), not a chat assistant. It uses **Ollama** over HTTP for inference and includes a **live typing harness with inline ghost text** and **runtime tuning controls** in the menu bar window.
 
 Design intent: **continuation only**, short outputs, provider-agnostic core (`LLMProvider`).
 
@@ -21,16 +21,16 @@ Design intent: **continuation only**, short outputs, provider-agnostic core (`LL
 | `Keybreeze/App/` | `@main` entry, AppKit activation policy (accessory agent) |
 | `Keybreeze/Core/` | `AppState`, `EditorState`, `ModelRegistry`, `ContextBuilder`, `PredictionMode`, `PredictionEngine`, `PredictionScheduler` |
 | `Keybreeze/LLM/` | `LLMProvider` protocol, Ollama HTTP client, tags catalog, `PromptBuilder` |
-| `Keybreeze/UI/` | Menu bar window, `PredictionTestViewModel`, `PredictionSessionViewModel` |
+| `Keybreeze/UI/` | Menu bar window, `PredictionSessionViewModel` |
 | `Keybreeze/Utils/` | `WordLimiter`, `Debouncer`, `KeybreezeLatencyLogger` |
 | `Documentation/` | Planning and this architecture note |
 
 ## Runtime object graph
 
-- **`KeybreezeApp`** owns `@StateObject` **`AppState`**, **`PredictionTestViewModel`**, and **`PredictionSessionViewModel`** (shared `AppState`).
-- **`MenuBarContentView`** — model picker, **Live typing (Phase 2)** harness, **One-shot test (Phase 1)** harness.
-- **`PredictionSessionViewModel`** — draft text field → **`PredictionScheduler`** → **`PredictionEngine`** → **`LLMProvider`**.
-- **`PredictionTestViewModel`** — fixed sample prefix → **`PredictionEngine`** (pause mode, one-shot).
+- **`KeybreezeApp`** owns `@StateObject` **`AppState`** and **`PredictionSessionViewModel`** (shared `AppState`).
+- **`MenuBarContentView`** — model picker, **Live typing (Phase 2.5)** harness with inline ghost text, and collapsible **runtime tuning** section.
+- **`PredictionSessionViewModel`** — draft text field → **`PredictionScheduler`** → **`PredictionEngine`** → **`LLMProvider`**. Exposes tuning overrides for verbosity, continuation, instruction strictness, and max words.
+- **`PredictionTestViewModel`** — removed in Phase 2.5 (subsumed by live typing harness).
 
 ## Prediction pipeline (Phase 2)
 
@@ -74,9 +74,11 @@ Per-model tuning fields on **`ModelOption`** (used in prompts today; runtime sli
 - **`KeybreezeLatencyLogger`** prints a `[KeybreezeLatency]` block to stdout when at least one token was received (TTFT, total time, word count). Cancelled runs with no tokens are silent.
 - Superseded **midType** requests cancelled by **pause** log at `debug` only — not as errors.
 
-## Planned next layer (Phase 2.5)
+## Phase 2.5 — Ghost text harness + tuning (complete)
 
-Before Obsidian integration: **inline ghost text** in the menu bar typing harness, plus **runtime tuning controls** (creativity / verbosity / debounce). Same engine and scheduler; only the presentation layer changes. See **`PHASE-PLAN.md`**.
+Inline ghost text renders as a low-opacity overlay directly on a plain-style TextField in the menu bar typing harness. Runtime tuning sliders for verbosity, continuation bias, and instruction strictness override model presets on the fly — no restart needed. The Phase 1 one-shot test harness has been removed. See **`PHASE-PLAN.md`** for the full plan.
+
+## Next — Phase 3: Obsidian integration
 
 ## Xcode project
 

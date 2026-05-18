@@ -10,9 +10,10 @@ final class PredictionScheduler {
     var onSuggestionChange: ((String) -> Void)?
     var onRunningChange: ((Bool) -> Void)?
     var onStatusChange: ((String) -> Void)?
+    var onModeChange: ((PredictionMode?) -> Void)?
 
     private let engine: PredictionEngine
-    private let modelProvider: () -> ModelOption
+    private var modelProvider: () -> ModelOption
     private let midTypeDebouncer = Debouncer()
     private let pauseDebouncer = Debouncer()
     private let log = Logger(subsystem: "app.keybreeze", category: "prediction-scheduler")
@@ -21,6 +22,11 @@ final class PredictionScheduler {
     init(engine: PredictionEngine, modelProvider: @escaping () -> ModelOption) {
         self.engine = engine
         self.modelProvider = modelProvider
+    }
+
+    /// Allows post-init replacement of the model provider (e.g. after `self` is fully initialized in the owner).
+    func updateModelProvider(_ provider: @escaping () -> ModelOption) {
+        modelProvider = provider
     }
 
     func start() {
@@ -40,14 +46,14 @@ final class PredictionScheduler {
     }
 
     /// Call on every editor change (keystroke). Cancels stale work and reschedules both modes.
+    /// Does NOT clear the suggestion — the old prediction stays visible until a new one arrives.
     func editorStateChanged(_ state: EditorState) {
         guard isActive else { return }
 
         latestEditorState = state
         observationGeneration &+= 1
         engine.cancel()
-        engine.clearSuggestion()
-        notifySuggestion()
+        // Keep the old suggestion visible until the new prediction streams in.
         notifyRunning(false)
 
         midTypeDebouncer.cancel()
@@ -104,7 +110,11 @@ final class PredictionScheduler {
     }
 
     private func notifySuggestion() {
-        onSuggestionChange?(engine.currentSuggestion)
+        let text = engine.currentSuggestion
+        if !text.isEmpty {
+            log.debug("Suggestion: \"\(text, privacy: .public)\"")
+        }
+        onSuggestionChange?(text)
     }
 
     private func notifyRunning(_ running: Bool) {

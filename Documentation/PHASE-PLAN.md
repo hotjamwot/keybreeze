@@ -53,6 +53,8 @@ KeybreezeApp
 * Menu bar exists
 * Shared state object exists for later phases
 
+**Status: complete.**
+
 ---
 
 # ⚙️ PHASE 1 — LLM PIPELINE (NO UI INJECTION YET)
@@ -110,6 +112,8 @@ Output:
 * Latency lines visible in Xcode / Console for TTFT and total time
 * No ghost overlay and no Obsidian hooks yet
 
+**Status: complete.** The one-shot test harness has been removed in Phase 2.5; the pattern is subsumed by the live typing harness.
+
 ---
 
 ## IMPORTANT:
@@ -141,7 +145,7 @@ This is where Keybreeze becomes real.
 ```text
 PredictionScheduler
 ContextBuilder
-LlamaService
+PredictionEngine
 ```
 
 ---
@@ -171,13 +175,11 @@ LlamaService
 * no lag spikes
 * system feels “alive” in logs
 
-BUT STILL NO UI OVERLAY.
-
 **Status: complete.** `PredictionScheduler`, `ContextBuilder`, `PredictionEngine`, and the live typing harness in the menu bar window are implemented. Cancellation of superseded midType jobs is expected; logs treat URLSession `-999` as silent cancel.
 
 ---
 
-# 👻 PHASE 2.5 — GHOST TEXT HARNESS + TUNING (STILL IN KEYBREEZE WINDOW)
+# 👻 PHASE 2.5 — GHOST TEXT HARNESS + TUNING (COMPLETE)
 
 ## Goal:
 
@@ -198,13 +200,20 @@ This de-risks Phase 3 — Obsidian becomes an input swap, not a combined “firs
 ### 2. Runtime tuning controls (in-window, not Settings yet)
 
 * sliders or steppers for **`verbosityBias`**, **`continuationBias`**, **`instructionStrictness`**
-* optional: midType / pause debounce ms, `maxWords`
+* optional: `maxWords` override
 * changes apply to the **next** prediction immediately
 
 ### 3. Observability
 
 * keep `[KeybreezeLatency]` for completed runs
-* status line shows active mode (midType / pause)
+* status line shows active mode (midType / pause) with live indicator
+* console logs live suggestion text at debug level
+* model selection logged when changed
+
+### 4. Cleanup
+
+* Phase 1 one-shot test harness removed (subsumed by live typing)
+* `PredictionTestViewModel` no longer used
 
 ---
 
@@ -214,6 +223,8 @@ This de-risks Phase 3 — Obsidian becomes an input swap, not a combined “firs
 * tuning sliders visibly change suggestion style
 * Tab accept **not required yet** (Phase 4)
 * no Obsidian or Accessibility hooks yet
+
+**Status: complete.**
 
 ---
 
