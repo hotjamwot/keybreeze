@@ -1,0 +1,444 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* KeybreezeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KeybreezeApp.swift */; };
+		A10000000000000000000002 /* AppKitLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppKitLifecycle.swift */; };
+		A10000000000000000000003 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* EditorState.swift */; };
+		A10000000000000000000004 /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* LLMProvider.swift */; };
+		A1000000000000000000000C /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* AppState.swift */; };
+		A1000000000000000000000D /* ModelRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* ModelRegistry.swift */; };
+		A1000000000000000000000E /* KeybreezeLatencyLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* KeybreezeLatencyLogger.swift */; };
+		A10000000000000000000005 /* OllamaConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* OllamaConfiguration.swift */; };
+		A10000000000000000000006 /* OllamaLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* OllamaLLMService.swift */; };
+		A10000000000000000000007 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* PromptBuilder.swift */; };
+		A10000000000000000000008 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarContentView.swift */; };
+		A10000000000000000000009 /* PredictionTestViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* PredictionTestViewModel.swift */; };
+		A1000000000000000000000A /* WordLimiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* WordLimiter.swift */; };
+		A1000000000000000000000F /* OllamaModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* OllamaModelCatalog.swift */; };
+		A10000000000000000000011 /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* ContextBuilder.swift */; };
+		A10000000000000000000012 /* PredictionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* PredictionMode.swift */; };
+		A10000000000000000000013 /* PredictionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PredictionEngine.swift */; };
+		A10000000000000000000014 /* PredictionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* PredictionScheduler.swift */; };
+		A10000000000000000000015 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* Debouncer.swift */; };
+		A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* PredictionSessionViewModel.swift */; };
+		A1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A30000000000000000000001 /* Keybreeze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Keybreeze.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000001 /* KeybreezeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AppKitLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitLifecycle.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
+		A2000000000000000000000D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* ModelRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRegistry.swift; sourceTree = "<group>"; };
+		A2000000000000000000000F /* KeybreezeLatencyLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeLatencyLogger.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* OllamaConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaConfiguration.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* OllamaLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaLLMService.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* PredictionTestViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionTestViewModel.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* WordLimiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordLimiter.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000000000000000000000C /* Keybreeze.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Keybreeze.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000010 /* OllamaModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelCatalog.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* PredictionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionMode.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* PredictionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* PredictionScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionScheduler.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* PredictionSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionSessionViewModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000002 /* Keybreeze */,
+				A50000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* Keybreeze */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000004 /* App */,
+				A50000000000000000000005 /* Core */,
+				A50000000000000000000006 /* LLM */,
+				A50000000000000000000007 /* UI */,
+				A50000000000000000000008 /* Utils */,
+				A2000000000000000000000B /* Assets.xcassets */,
+				A2000000000000000000000C /* Keybreeze.entitlements */,
+			);
+			path = Keybreeze;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* Keybreeze.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* KeybreezeApp.swift */,
+				A20000000000000000000002 /* AppKitLifecycle.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000005 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* EditorState.swift */,
+				A2000000000000000000000D /* AppState.swift */,
+				A2000000000000000000000E /* ModelRegistry.swift */,
+				A20000000000000000000011 /* ContextBuilder.swift */,
+				A20000000000000000000012 /* PredictionMode.swift */,
+				A20000000000000000000013 /* PredictionEngine.swift */,
+				A20000000000000000000014 /* PredictionScheduler.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000006 /* LLM */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000004 /* LLMProvider.swift */,
+				A20000000000000000000005 /* OllamaConfiguration.swift */,
+				A20000000000000000000006 /* OllamaLLMService.swift */,
+				A20000000000000000000010 /* OllamaModelCatalog.swift */,
+				A20000000000000000000007 /* PromptBuilder.swift */,
+			);
+			path = LLM;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000007 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000008 /* MenuBarContentView.swift */,
+				A20000000000000000000009 /* PredictionTestViewModel.swift */,
+				A20000000000000000000016 /* PredictionSessionViewModel.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000008 /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000A /* WordLimiter.swift */,
+				A2000000000000000000000F /* KeybreezeLatencyLogger.swift */,
+				A20000000000000000000015 /* Debouncer.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000000000000000000001 /* Keybreeze */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "Keybreeze" */;
+			buildPhases = (
+				A70000000000000000000001 /* Sources */,
+				A40000000000000000000001 /* Frameworks */,
+				A70000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Keybreeze;
+			productName = Keybreeze;
+			productReference = A30000000000000000000001 /* Keybreeze.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A60000000000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "Keybreeze" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000000000000000000001 /* Keybreeze */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A70000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000B /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A70000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* KeybreezeApp.swift in Sources */,
+				A10000000000000000000002 /* AppKitLifecycle.swift in Sources */,
+				A10000000000000000000003 /* EditorState.swift in Sources */,
+				A1000000000000000000000C /* AppState.swift in Sources */,
+				A1000000000000000000000D /* ModelRegistry.swift in Sources */,
+				A10000000000000000000004 /* LLMProvider.swift in Sources */,
+				A10000000000000000000005 /* OllamaConfiguration.swift in Sources */,
+				A10000000000000000000006 /* OllamaLLMService.swift in Sources */,
+				A1000000000000000000000F /* OllamaModelCatalog.swift in Sources */,
+				A10000000000000000000007 /* PromptBuilder.swift in Sources */,
+				A10000000000000000000008 /* MenuBarContentView.swift in Sources */,
+				A10000000000000000000009 /* PredictionTestViewModel.swift in Sources */,
+				A1000000000000000000000A /* WordLimiter.swift in Sources */,
+				A1000000000000000000000E /* KeybreezeLatencyLogger.swift in Sources */,
+				A10000000000000000000011 /* ContextBuilder.swift in Sources */,
+				A10000000000000000000012 /* PredictionMode.swift in Sources */,
+				A10000000000000000000013 /* PredictionEngine.swift in Sources */,
+				A10000000000000000000014 /* PredictionScheduler.swift in Sources */,
+				A10000000000000000000015 /* Debouncer.swift in Sources */,
+				A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B10000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B10000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B10000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Keybreeze/Keybreeze.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.keybreeze.Keybreeze;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B10000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Keybreeze/Keybreeze.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.keybreeze.Keybreeze;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "Keybreeze" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000001 /* Debug */,
+				B10000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "Keybreeze" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000003 /* Debug */,
+				B10000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}
