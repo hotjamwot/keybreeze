@@ -11,9 +11,13 @@ final class PredictionScheduler {
     var onRunningChange: ((Bool) -> Void)?
     var onStatusChange: ((String) -> Void)?
     var onModeChange: ((PredictionMode?) -> Void)?
+    /// Called when a prediction finishes (normal completion or cancellation).
+    /// Provides mode, ttft, totalTime, the resulting text, and whether it was cancelled.
+    var onPredictionComplete: ((_ mode: PredictionMode, _ ttft: TimeInterval?, _ totalTime: TimeInterval, _ text: String, _ cancelled: Bool) -> Void)?
 
     private let engine: PredictionEngine
     private var modelProvider: () -> ModelOption
+    private var promptOverrides: () -> (system: String, styleNudge: String) = { ("", "") }
     private let midTypeDebouncer = Debouncer()
     private let pauseDebouncer = Debouncer()
     private let log = Logger(subsystem: "app.keybreeze", category: "prediction-scheduler")
@@ -22,6 +26,11 @@ final class PredictionScheduler {
     init(engine: PredictionEngine, modelProvider: @escaping () -> ModelOption) {
         self.engine = engine
         self.modelProvider = modelProvider
+    }
+
+    /// Overrides for custom prompts from the Typing Lab (runtime prompt editing).
+    func updatePromptOverrides(_ provider: @escaping () -> (system: String, styleNudge: String)) {
+        promptOverrides = provider
     }
 
     /// Allows post-init replacement of the model provider (e.g. after `self` is fully initialized in the owner).
@@ -46,7 +55,7 @@ final class PredictionScheduler {
     }
 
     /// Call on every editor change (keystroke). Cancels stale work and reschedules both modes.
-    /// Does NOT clear the suggestion — the old prediction stays visible until a new one arrives.
+    /// Does NOT clear the suggestion — the old prediction stays visible until the new one arrives.
     func editorStateChanged(_ state: EditorState) {
         guard isActive else { return }
 
@@ -85,7 +94,14 @@ final class PredictionScheduler {
 
         log.debug("Scheduling predict mode=\(mode.rawValue, privacy: .public)")
 
-        engine.predict(editorState: state, model: model, mode: mode)
+        let prompts = promptOverrides()
+        engine.predict(
+            editorState: state,
+            model: model,
+            mode: mode,
+            customSystemPrompt: prompts.system,
+            styleNudge: prompts.styleNudge
+        )
 
         observationGeneration &+= 1
         let generation = observationGeneration
@@ -106,6 +122,11 @@ final class PredictionScheduler {
         notifyRunning(false)
         if isActive {
             onStatusChange?("Ready (\(mode.rawValue))")
+        }
+
+        // Fire completion callback for history tracking
+        if let metrics = engine.lastRunMetrics {
+            onPredictionComplete?(mode, metrics.ttft, metrics.totalTime, engine.currentSuggestion, metrics.cancelled)
         }
     }
 

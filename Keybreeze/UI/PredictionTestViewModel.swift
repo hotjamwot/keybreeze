@@ -16,9 +16,16 @@ final class PredictionTestViewModel: ObservableObject {
     /// Sample prefix for Phase 1 harness (no Obsidian yet).
     static let samplePrefix = "The night was unusually quiet and he noticed tha"
 
-    init(appState: AppState, provider: (any LLMProvider)? = nil) {
+    init(appState: AppState, engine: PredictionEngine? = nil) {
         self.appState = appState
-        self.engine = PredictionEngine(provider: provider)
+        let config = LLMConfiguration(
+            ollamaConfiguration: appState.ollamaConfiguration,
+            llamaCppConfiguration: appState.llamaCppConfiguration
+        )
+        self.engine = engine ?? PredictionEngine(
+            backend: appState.selectedBackend,
+            configuration: config
+        )
     }
 
     func cancel() {

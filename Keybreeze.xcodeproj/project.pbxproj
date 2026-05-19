@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		665610DA2FBC5FC900C7B4D3 /* LLMConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D92FBC5FC900C7B4D3 /* LLMConfiguration.swift */; };
+		665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */; };
+		665610DC2FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D62FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift */; };
+		665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */; };
 		A10000000000000000000001 /* KeybreezeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KeybreezeApp.swift */; };
 		A10000000000000000000002 /* AppKitLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppKitLifecycle.swift */; };
 		A10000000000000000000003 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* EditorState.swift */; };
@@ -28,9 +32,20 @@
 		A10000000000000000000014 /* PredictionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* PredictionScheduler.swift */; };
 		A10000000000000000000015 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* Debouncer.swift */; };
 		A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* PredictionSessionViewModel.swift */; };
+		C10000000000000000000001 /* PredictionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* PredictionHistory.swift */; };
+		C10000000000000000000002 /* ShadowPredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* ShadowPredictor.swift */; };
+		C10000000000000000000011 /* TypingLabRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000011 /* TypingLabRootView.swift */; };
+		C10000000000000000000012 /* DiagnosticsPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000012 /* DiagnosticsPanelView.swift */; };
+		C10000000000000000000013 /* ParameterControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* ParameterControlsView.swift */; };
+		C10000000000000000000014 /* PromptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000014 /* PromptEditorView.swift */; };
+		C10000000000000000000015 /* PredictionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000015 /* PredictionHistoryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		665610D62FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppConfiguration.swift; sourceTree = "<group>"; };
+		665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppService.swift; sourceTree = "<group>"; };
+		665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMBackend.swift; sourceTree = "<group>"; };
+		665610D92FBC5FC900C7B4D3 /* LLMConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMConfiguration.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* KeybreezeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AppKitLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitLifecycle.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
@@ -54,6 +69,13 @@
 		A20000000000000000000015 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
 		A20000000000000000000016 /* PredictionSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionSessionViewModel.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* Keybreeze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Keybreeze.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000001 /* PredictionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionHistory.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* ShadowPredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowPredictor.swift; sourceTree = "<group>"; };
+		C20000000000000000000011 /* TypingLabRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLabRootView.swift; sourceTree = "<group>"; };
+		C20000000000000000000012 /* DiagnosticsPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsPanelView.swift; sourceTree = "<group>"; };
+		C20000000000000000000013 /* ParameterControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParameterControlsView.swift; sourceTree = "<group>"; };
+		C20000000000000000000014 /* PromptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEditorView.swift; sourceTree = "<group>"; };
+		C20000000000000000000015 /* PredictionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionHistoryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -112,6 +134,8 @@
 				A20000000000000000000003 /* EditorState.swift */,
 				A2000000000000000000000D /* AppState.swift */,
 				A2000000000000000000000E /* ModelRegistry.swift */,
+				C20000000000000000000001 /* PredictionHistory.swift */,
+				C20000000000000000000002 /* ShadowPredictor.swift */,
 				A20000000000000000000011 /* ContextBuilder.swift */,
 				A20000000000000000000012 /* PredictionMode.swift */,
 				A20000000000000000000013 /* PredictionEngine.swift */,
@@ -123,6 +147,10 @@
 		A50000000000000000000006 /* LLM */ = {
 			isa = PBXGroup;
 			children = (
+				665610D62FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift */,
+				665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */,
+				665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */,
+				665610D92FBC5FC900C7B4D3 /* LLMConfiguration.swift */,
 				A20000000000000000000004 /* LLMProvider.swift */,
 				A20000000000000000000005 /* OllamaConfiguration.swift */,
 				A20000000000000000000006 /* OllamaLLMService.swift */,
@@ -138,6 +166,7 @@
 				A20000000000000000000008 /* MenuBarContentView.swift */,
 				A20000000000000000000009 /* PredictionTestViewModel.swift */,
 				A20000000000000000000016 /* PredictionSessionViewModel.swift */,
+				C50000000000000000000001 /* TypingLab */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -150,6 +179,18 @@
 				A20000000000000000000015 /* Debouncer.swift */,
 			);
 			path = Utils;
+			sourceTree = "<group>";
+		};
+		C50000000000000000000001 /* TypingLab */ = {
+			isa = PBXGroup;
+			children = (
+				C20000000000000000000011 /* TypingLabRootView.swift */,
+				C20000000000000000000012 /* DiagnosticsPanelView.swift */,
+				C20000000000000000000013 /* ParameterControlsView.swift */,
+				C20000000000000000000014 /* PromptEditorView.swift */,
+				C20000000000000000000015 /* PredictionHistoryView.swift */,
+			);
+			path = TypingLab;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -226,6 +267,10 @@
 				A10000000000000000000003 /* EditorState.swift in Sources */,
 				A1000000000000000000000C /* AppState.swift in Sources */,
 				A1000000000000000000000D /* ModelRegistry.swift in Sources */,
+				665610DA2FBC5FC900C7B4D3 /* LLMConfiguration.swift in Sources */,
+				665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */,
+				665610DC2FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift in Sources */,
+				665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */,
 				A10000000000000000000004 /* LLMProvider.swift in Sources */,
 				A10000000000000000000005 /* OllamaConfiguration.swift in Sources */,
 				A10000000000000000000006 /* OllamaLLMService.swift in Sources */,
@@ -241,6 +286,13 @@
 				A10000000000000000000014 /* PredictionScheduler.swift in Sources */,
 				A10000000000000000000015 /* Debouncer.swift in Sources */,
 				A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */,
+				C10000000000000000000001 /* PredictionHistory.swift in Sources */,
+				C10000000000000000000002 /* ShadowPredictor.swift in Sources */,
+				C10000000000000000000011 /* TypingLabRootView.swift in Sources */,
+				C10000000000000000000012 /* DiagnosticsPanelView.swift in Sources */,
+				C10000000000000000000013 /* ParameterControlsView.swift in Sources */,
+				C10000000000000000000014 /* PromptEditorView.swift in Sources */,
+				C10000000000000000000015 /* PredictionHistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

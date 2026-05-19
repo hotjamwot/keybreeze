@@ -7,18 +7,28 @@ final class PredictionEngine {
     private(set) var currentSuggestion: String = ""
     private(set) var isRunning: Bool = false
 
-    private let provider: any LLMProvider
-    private let log = Logger(subsystem: "app.keybreeze", category: "prediction-engine")
+    /// Metrics from the last completed prediction run, used by history recording.
+    private(set) var lastRunMetrics: (ttft: TimeInterval?, totalTime: TimeInterval, cancelled: Bool)?
 
-    private var activeTask: Task<Void, Never>?
-    private var suppressStreamUpdates = false
-    private var latencyRequestStart: Date?
-    private var latencyFirstToken: Date?
-    private var latencyModelSnapshot: ModelOption?
+private let provider: any LLMProvider
+private let backend: LLMBackend
+private let configuration: LLMConfiguration
+private let log = Logger(subsystem: "app.keybreeze", category: "prediction-engine")
 
-    init(provider: (any LLMProvider)? = nil) {
-        self.provider = provider ?? OllamaLLMService(configuration: OllamaConfiguration())
-    }
+private var activeTask: Task<Void, Never>?
+private var suppressStreamUpdates = false
+private var latencyRequestStart: Date?
+private var latencyFirstToken: Date?
+private var latencyModelSnapshot: ModelOption?
+
+init(
+    backend: LLMBackend,
+    configuration: LLMConfiguration
+) {
+    self.backend = backend
+    self.configuration = configuration
+    self.provider = backend.makeProvider(configuration: configuration)
+}
 
     func clearSuggestion() {
         currentSuggestion = ""
@@ -33,18 +43,28 @@ final class PredictionEngine {
     }
 
     /// Starts a new prediction, cancelling any in-flight stream.
+    /// - Parameters:
+    ///   - customSystemPrompt: If non-empty, passed to PromptBuilder to override system-level framing.
+    ///   - customContinuationPrompt: If non-empty, passed to PromptBuilder to replace the entire prompt template.
     func predict(
         editorState: EditorState,
         model: ModelOption,
         mode: PredictionMode,
         logLatency: Bool = true,
-        onToken: ((String) -> Void)? = nil
+        onToken: ((String) -> Void)? = nil,
+        customSystemPrompt: String = "",
+        styleNudge: String = ""
     ) {
         cancel()
 
         let maxWords = mode.maxWords(modelCap: model.maxWords)
         let focused = ContextBuilder.focusedState(from: editorState)
-        let prompt = PromptBuilder.continuationPrompt(for: focused, modelOption: model)
+        let prompt = PromptBuilder.continuationPrompt(
+            for: focused,
+            modelOption: model,
+            customSystemPrompt: customSystemPrompt,
+            styleNudge: styleNudge
+        )
 
         currentSuggestion = ""
         suppressStreamUpdates = false
@@ -56,7 +76,7 @@ final class PredictionEngine {
             latencyModelSnapshot = model
         }
 
-        log.info("Predict mode=\(mode.rawValue, privacy: .public) model=\(model.ollamaId, privacy: .public)")
+        log.info("Predict mode=\(mode.rawValue, privacy: .public) backend=\(self.backend.rawValue, privacy: .public) model=\(model.ollamaId, privacy: .public)")
 
         activeTask = Task { [weak self] in
             guard let self else { return }
@@ -109,7 +129,19 @@ final class PredictionEngine {
     }
 
     private func finishRun(logLatency: Bool, mode: PredictionMode, cancelled: Bool = false) {
-        if logLatency, latencyFirstToken != nil {
+        // Capture metrics before discarding
+        let total: TimeInterval
+        let ttft: TimeInterval?
+        if let start = latencyRequestStart {
+            total = Date().timeIntervalSince(start)
+            ttft = latencyFirstToken.map { $0.timeIntervalSince(start) }
+        } else {
+            total = 0
+            ttft = nil
+        }
+        lastRunMetrics = (ttft, total, cancelled)
+
+        if logLatency, ttft != nil {
             logLatencyIfNeeded(mode: mode)
         } else {
             discardLatencyTracking()
