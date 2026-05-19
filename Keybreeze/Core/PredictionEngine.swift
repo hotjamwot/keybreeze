@@ -78,42 +78,42 @@ init(
 
         log.info("Predict mode=\(mode.rawValue, privacy: .public) backend=\(self.backend.rawValue, privacy: .public) model=\(model.ollamaId, privacy: .public)")
 
-        activeTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.provider.streamCompletion(prompt: prompt, model: model.ollamaId) { token in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        guard !self.suppressStreamUpdates else { return }
-                        if self.latencyFirstToken == nil {
-                            self.latencyFirstToken = Date()
-                        }
-                        self.appendTokenRespectingWordCap(token, maxWords: maxWords, onToken: onToken)
-                    }
-                }
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.finishRun(logLatency: logLatency, mode: mode)
-                }
-            } catch is CancellationError {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.finishRun(logLatency: logLatency, mode: mode, cancelled: true)
-                }
-            } catch {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if Self.isBenignCancellation(error) {
-                        self.finishRun(logLatency: logLatency, mode: mode, cancelled: true)
-                        return
-                    }
-                    self.discardLatencyTracking()
-                    self.isRunning = false
-                    self.activeTask = nil
-                    self.log.error("Predict failed mode=\(mode.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
-                }
-            }
-        }
+         activeTask = Task { [weak self] in
+             guard let self else { return }
+             do {
+                 try await self.provider.streamCompletion(prompt: prompt, model: model.ollamaId, modelOption: model) { token in
+                     Task { @MainActor [weak self] in
+                         guard let self else { return }
+                         guard !self.suppressStreamUpdates else { return }
+                         if self.latencyFirstToken == nil {
+                             self.latencyFirstToken = Date()
+                         }
+                         self.appendTokenRespectingWordCap(token, maxWords: maxWords, onToken: onToken)
+                     }
+                 }
+                 await MainActor.run { [weak self] in
+                     guard let self else { return }
+                     self.finishRun(logLatency: logLatency, mode: mode)
+                 }
+             } catch is CancellationError {
+                 await MainActor.run { [weak self] in
+                     guard let self else { return }
+                     self.finishRun(logLatency: logLatency, mode: mode, cancelled: true)
+                 }
+             } catch {
+                 await MainActor.run { [weak self] in
+                     guard let self else { return }
+                     if Self.isBenignCancellation(error) {
+                         self.finishRun(logLatency: logLatency, mode: mode, cancelled: true)
+                         return
+                     }
+                     self.discardLatencyTracking()
+                     self.isRunning = false
+                     self.activeTask = nil
+                     self.log.error("Predict failed mode=\(mode.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+                 }
+             }
+         }
     }
 
     private static func isBenignCancellation(_ error: Error) -> Bool {

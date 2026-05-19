@@ -70,11 +70,66 @@ final class LlamaCppProcessManager: ObservableObject {
                     .info("Found llama-server PIDs on port 11345, killing: \(killable.map(String.init).joined(separator: ","))")
                 for pid in killable {
                     kill(pid, SIGKILL)
-                    usleep(200_000) // 200ms per kill, let port release
+                    // macOS holds a killed socket in TIME_WAIT for up to 30 s; a
+                    // generous pause here means `waitForPortAvailable()` rarely
+                    // has to loop at all and the very next bind succeeds.
+                    usleep(1_500_000) // 1.5 s per kill, let port release
                 }
             }
         } catch {
             // lsof might not be available — just continue
+        }
+    }
+
+    /// Block until port 11345 is confirmed free.  Polls with exponential
+    /// back-off (200 ms → 500 ms → 1 s → 2 s → 3 s) up to a 30 s ceiling and
+    /// throws if the timeout expires.
+    ///
+    /// Calling this before every spawn prevents `llama-server` from crashing
+    /// with "couldn't bind HTTP server socket" when the OS is still holding
+    /// the port in `TIME_WAIT` after a `SIGKILL`.
+    private static func waitForPortAvailable() async throws {
+        let log = Logger(subsystem: "app.keybreeze", category: "llamacpp-proc")
+        log.info("Waiting for port 11345 to become available…")
+        let backoffs: [UInt64] = [200_000_000, 500_000_000, 1_000_000_000, 2_000_000_000, 3_000_000_000]
+        let deadline = DispatchTime.now() + .seconds(30)
+        var attempt = 0
+
+        while DispatchTime.now() < deadline {
+            let pid = getServerPIDOnPort11345()
+            if pid == nil {
+                log.info("Port 11345 is now free")
+                return
+            }
+            let remaining = deadline.uptimeNanoseconds - DispatchTime.now().uptimeNanoseconds
+            let delay = min(backoffs[attempt % backoffs.count], max(0, UInt64(remaining)))
+            attempt += 1
+            try await Task.sleep(nanoseconds: delay)
+        }
+
+        let msg = "Timed out waiting for port 11345 to become available after 30 s"
+        log.error("\(msg)")
+        throw LlamaCppProcessError.launchFailed(msg)
+    }
+
+    /// Returns the PID listening on port 11345, or `nil` if nothing owns it.
+    private static func getServerPIDOnPort11345() -> Int32? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        task.arguments = ["-ti", "tcp:11345"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let pids = String(data: data, encoding: .utf8)?
+                .split(separator: "\n")
+                .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? []
+            return pids.filter { $0 > 1 }.first
+        } catch {
+            return nil
         }
     }
 
@@ -105,6 +160,13 @@ final class LlamaCppProcessManager: ObservableObject {
 
         state = .starting
         log.info("Starting llama-server with model \(modelPath)…")
+
+        // Confirm the port is genuinely free before we ask llama-server to
+        // bind to it.  A process killed by SIGKILL still has its socket in
+        // TIME_WAIT on macOS for up to 30 s; binding too early causes
+        // llama-server to exit with code 1 regardless of which caller
+        // (handleBackendChange or .onChange) triggered this launch.
+        try await Self.waitForPortAvailable()
 
         // Let llama-server use the GGUF's built-in chat template.
         // For Gemma 4, this only prepends <bos>, which the model needs

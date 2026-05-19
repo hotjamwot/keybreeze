@@ -30,11 +30,12 @@ final class LlamaCppService: LLMProvider, @unchecked Sendable {
     func streamCompletion(
         prompt: String,
         model: String,
+        modelOption: ModelOption,
         onToken: @escaping (String) -> Void
     ) async throws {
         cancel()
 
-        let stream = ActiveStream(
+let stream = ActiveStream(
             task: Task { [configuration, urlSession] in
                 let url = configuration.baseURL.appendingPathComponent("completion")
                 var request = URLRequest(url: url)
@@ -45,10 +46,10 @@ final class LlamaCppService: LLMProvider, @unchecked Sendable {
                 let body = LlamaCppCompletionRequest(
                     prompt: prompt,
                     stream: false,
-                    n_predict: 32,
-                    temperature: 0.7,
-                    top_p: 0.9,
-                    repeat_penalty: 1.1,
+                    n_predict: 16,
+                    temperature: modelOption.temperature,
+                    top_p: modelOption.topP,
+                    repeat_penalty: modelOption.repeatPenalty,
                     cache_prompt: false
                 )
                 request.httpBody = try JSONEncoder().encode(body)

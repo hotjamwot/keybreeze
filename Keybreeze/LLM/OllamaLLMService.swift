@@ -20,6 +20,7 @@ final class OllamaLLMService: LLMProvider, @unchecked Sendable {
     func streamCompletion(
         prompt: String,
         model: String,
+        modelOption: ModelOption,
         onToken: @escaping (String) -> Void
     ) async throws {
         cancel()
@@ -32,7 +33,16 @@ final class OllamaLLMService: LLMProvider, @unchecked Sendable {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.timeoutInterval = 120
 
-                let body = OllamaGenerateRequest(model: model, prompt: prompt, stream: true)
+let body = OllamaGenerateRequest(
+                    model: model,
+                    prompt: prompt,
+                    stream: true,
+                    temperature: modelOption.temperature,
+                    top_p: modelOption.topP,
+                    repeat_penalty: modelOption.repeatPenalty,
+                    presence_penalty: modelOption.presencePenalty,
+                    num_predict: 16
+                )
                 request.httpBody = try JSONEncoder().encode(body)
 
                 let (bytes, response) = try await urlSession.bytes(for: request)
@@ -109,6 +119,11 @@ private struct OllamaGenerateRequest: Encodable {
     let model: String
     let prompt: String
     let stream: Bool
+    let temperature: Double
+    let top_p: Double
+    let repeat_penalty: Double
+    let presence_penalty: Double
+    let num_predict: Int
 }
 
 private struct OllamaGenerateStreamChunk: Decodable {

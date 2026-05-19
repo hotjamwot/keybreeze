@@ -76,24 +76,26 @@ final class PredictionHistory {
         records.filter { $0.resolution == resolution }.count
     }
 
-    /// Overall acceptance rate (accepted / total completed)
+    /// Overall acceptance rate (accepted / total completed predictions, excluding tab-accepts with no latency)
     var acceptanceRate: Double {
-        let completed = records.filter { $0.resolution == .accepted || $0.resolution == .ignored }
+        let completed = records.filter { $0.resolution == .accepted || $0.resolution == .ignored || $0.resolution == .invalidated }
         guard !completed.isEmpty else { return 0 }
         let accepted = completed.filter { $0.resolution == .accepted }.count
         return Double(accepted) / Double(completed.count)
     }
 
-    /// Average total time for completed predictions
+    /// Average total time for completed predictions (excludes tab-accepts with no latency)
     var averageTotalTime: TimeInterval {
-        let completed = records.filter { $0.resolution == .accepted || $0.resolution == .ignored }
+        let completed = records.filter { 
+            ($0.resolution == .accepted || $0.resolution == .ignored || $0.resolution == .invalidated) && $0.totalTime > 0 
+        }
         guard !completed.isEmpty else { return 0 }
         return completed.map(\.totalTime).reduce(0, +) / Double(completed.count)
     }
 
-    /// Average time to first token for completed predictions
+    /// Average time to first token for completed predictions (excludes tab-accepts with no latency)
     var averageTimeToFirstToken: TimeInterval {
-        let withTTFT = records.compactMap(\.timeToFirstToken)
+        let withTTFT = records.compactMap(\.timeToFirstToken).filter { $0 > 0 }
         guard !withTTFT.isEmpty else { return 0 }
         return withTTFT.reduce(0, +) / Double(withTTFT.count)
     }

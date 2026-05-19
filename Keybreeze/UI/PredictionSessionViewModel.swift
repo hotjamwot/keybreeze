@@ -59,6 +59,9 @@ final class PredictionSessionViewModel: ObservableObject {
     @Published var repeatPenalty: Double = ModelOption.defaultRepeatPenalty {
         didSet { if tuningEnabled { updateTunedModel() } }
     }
+    @Published var presencePenalty: Double = ModelOption.defaultPresencePenalty {
+        didSet { if tuningEnabled { updateTunedModel() } }
+    }
     @Published var confidenceThreshold: Double = ModelOption.defaultConfidenceThreshold {
         didSet { if tuningEnabled { updateTunedModel() } }
     }
@@ -114,6 +117,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             if self.suggestionLocked {
                 return
             }
+            // Strip any duplicate prefix between the typed text and the suggestion
+            let text = self.stripDuplicatePrefix(text: text, from: self.draftText)
             // Persist the last non-empty suggestion so it doesn't flash away when the engine clears.
             if !text.isEmpty {
                 self.lastDisplayedSuggestion = text
@@ -309,6 +314,7 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             temperature: temperature,
             topP: topP,
             repeatPenalty: repeatPenalty,
+            presencePenalty: presencePenalty,
             confidenceThreshold: confidenceThreshold
         )
     }
@@ -323,6 +329,7 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         temperature = base.temperature
         topP = base.topP
         repeatPenalty = base.repeatPenalty
+        presencePenalty = base.presencePenalty
         confidenceThreshold = base.confidenceThreshold
         updateTunedModel()
     }
@@ -337,6 +344,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             instructionStrictness = 0.95
             temperature = 0.4
             topP = 0.85
+            repeatPenalty = 1.1
+            presencePenalty = 0.2
             confidenceThreshold = 0.5
             tuningMaxWords = 4
         case .balanced:
@@ -345,6 +354,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             instructionStrictness = 0.88
             temperature = 0.7
             topP = 0.9
+            repeatPenalty = ModelOption.defaultRepeatPenalty
+            presencePenalty = ModelOption.defaultPresencePenalty
             confidenceThreshold = 0.25
             tuningMaxWords = 0
         case .aggressive:
@@ -353,6 +364,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             instructionStrictness = 0.7
             temperature = 0.9
             topP = 0.95
+            repeatPenalty = ModelOption.defaultRepeatPenalty
+            presencePenalty = ModelOption.defaultPresencePenalty
             confidenceThreshold = 0.1
             tuningMaxWords = 0
         }
@@ -395,6 +408,37 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             )
         )
         predictionHistory.append(record)
+    }
+
+    /// Strips a prefix from the suggestion that duplicates the end of the typed text.
+    /// This handles cases where the model predicts text that partially overlaps with what's already typed.
+    private func stripDuplicatePrefix(text suggestion: String, from typedText: String) -> String {
+        let trimmedTyped = typedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTyped.isEmpty && !suggestion.isEmpty else { return suggestion }
+
+        // Split both into words to find the overlap
+        let typedWords = trimmedTyped.split(separator: " ", omittingEmptySubsequences: false)
+        let suggestedWords = suggestion.split(separator: " ", omittingEmptySubsequences: false)
+
+        guard !typedWords.isEmpty && !suggestedWords.isEmpty else { return suggestion }
+
+        // Find how many trailing words from typed text match leading words in suggestion
+        var overlapCount = 0
+        let maxCheck = min(typedWords.count, suggestedWords.count)
+        for i in 1...maxCheck {
+            let typedIdx = typedWords.count - i
+            if typedWords[typedIdx] == suggestedWords[i - 1] {
+                overlapCount = i
+            } else {
+                break
+            }
+        }
+
+        // Strip the overlapping prefix
+        if overlapCount > 0 && overlapCount <= suggestedWords.count {
+            return suggestedWords.dropFirst(overlapCount).joined(separator: " ")
+        }
+        return suggestion
     }
 }
 

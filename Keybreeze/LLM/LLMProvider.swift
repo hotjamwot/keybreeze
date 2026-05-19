@@ -5,6 +5,7 @@ protocol LLMProvider {
     func streamCompletion(
         prompt: String,
         model: String,
+        modelOption: ModelOption,
         onToken: @escaping (String) -> Void
     ) async throws
 
