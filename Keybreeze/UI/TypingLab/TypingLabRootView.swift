@@ -61,6 +61,9 @@ struct TypingLabRootView: View {
                             PromptEditorView()
                         }
 
+                    case .apps:
+                        AppGatingPanelView()
+
                     case .diagnostics:
                         DiagnosticsPanelView()
                         ParameterControlsView()
@@ -204,6 +207,7 @@ struct TypingLabRootView: View {
 
 enum TypingLabTab: String, CaseIterable {
     case playground = "Playground"
+    case apps = "Apps"
     case diagnostics = "Diagnostics"
     case history = "History"
 }

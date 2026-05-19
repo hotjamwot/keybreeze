@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import OSLog
@@ -46,6 +47,26 @@ final class PredictionSessionViewModel: ObservableObject {
     /// Overrides `maxWords` on the model. 0 means "use model default".
     @Published var tuningMaxWords: Int = 0 {
         didSet { if tuningEnabled { updateTunedModel() } }
+    }
+
+    // MARK: — App Gating
+
+    /// Apps where auto-trigger is completely disabled.
+    @Published var excludedBundleIDs: [String] = [] {
+        didSet { saveSettings() }
+    }
+
+    /// Apps where only manual trigger works (auto-trigger disabled).
+    @Published var manualOnlyBundleIDs: [String] = [] {
+        didSet { saveSettings() }
+    }
+
+    func isExcluded(_ bundleID: String) -> Bool {
+        excludedBundleIDs.contains { bundleID == $0 || bundleID.hasPrefix($0) }
+    }
+
+    func isManualOnly(_ bundleID: String) -> Bool {
+        manualOnlyBundleIDs.contains { bundleID == $0 || bundleID.hasPrefix($0) }
     }
 
     // MARK: — Typing Lab runtime parameters
@@ -176,12 +197,18 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         guard let self else { return ("", "") }
         return (self.customSystemPrompt, self.styleNudge)
     }
-    // Wire the readiness gate — prevent predictions while the backend isn't ready
-    scheduler.canPredict = { [weak self] in
-        guard let self else { return false }
-        return self.appState.canRunPrediction
-    }
-}
+// Wire the readiness gate — prevent predictions while the backend isn't ready
+     scheduler.canPredict = { [weak self] in
+         guard let self else { return false }
+         // Gate on excluded apps first (prevents invasive predictions)
+         let frontmostID = AccessibilityManager.shared.focusedAppBundleID()
+         if frontmostID.map(self.isExcluded) ?? false { return false }
+         return self.appState.canRunPrediction
+     }
+
+     // Load persisted app gating settings
+     loadSettings()
+ }
 
     // MARK: — Backend lifecycle
 
@@ -439,6 +466,26 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             return suggestedWords.dropFirst(overlapCount).joined(separator: " ")
         }
         return suggestion
+    }
+
+    // MARK: — Settings Persistence
+
+    private func saveSettings() {
+        UserDefaults.standard.set(excludedBundleIDs, forKey: "excludedBundleIDs")
+        UserDefaults.standard.set(manualOnlyBundleIDs, forKey: "manualOnlyBundleIDs")
+    }
+
+    private func loadSettings() {
+        if let saved = UserDefaults.standard.array(forKey: "excludedBundleIDs") as? [String] {
+            excludedBundleIDs = saved
+        } else {
+            excludedBundleIDs = AccessibilityManager.defaultExcludedBundleIDs
+        }
+        if let saved = UserDefaults.standard.array(forKey: "manualOnlyBundleIDs") as? [String] {
+            manualOnlyBundleIDs = saved
+        } else {
+            manualOnlyBundleIDs = AccessibilityManager.defaultManualOnlyBundleIDs
+        }
     }
 }
 

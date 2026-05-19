@@ -14,6 +14,8 @@ A menu bar app that:
 
 **Core promise:** *Create uninterrupted writing flow.* Not autocomplete spam. Not AI authorship. Cognitive acceleration through anticipatory language completion.
 
+The soul of Keybreeze is: **Keybreeze is a local-first cognitive flow amplifier that predicts and removes low-friction language work without stealing authorship or interrupting momentum. It removes friction between thought and typing.**
+
 ---
 
 ## What Keybreeze Is NOT

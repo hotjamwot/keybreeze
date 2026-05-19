@@ -101,6 +101,7 @@ final class AppState: ObservableObject {
                 temperature: ModelOption.defaultTemperature,
                 topP: ModelOption.defaultTopP,
                 repeatPenalty: ModelOption.defaultRepeatPenalty,
+                presencePenalty: 0.0,
                 confidenceThreshold: ModelOption.defaultConfidenceThreshold
             )
         }
