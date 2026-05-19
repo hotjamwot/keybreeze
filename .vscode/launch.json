@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Keybreeze (Xcode / LLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/Keybreeze.xcodeproj",
+      "preLaunchTask": "pre-debug-isolation-cleanup",
+      "stopOnEntry": false,
+      "args": [],
+      "envFile": "${workspaceFolder}/.vscode/.env.isolation",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "postDebugTask": "post-debug-teardown",
+
+      // Kill ALL child processes rooted in llama-server when the debug session ends.
+      // This prevents orphaned Metal contexts from surviving between debug runs.
+      "internalConsoleOptions": "openOnFirstSessionStart",
+      "detached": false,
+      "shutdownCommands": [
+        "process kill -p ${command:pids}"
+      ]
+    }
+  ],
+  // New LLDB post-mortem command: on every config we add a one-shot listener
+  // that fires when the debug session is popped, flushing any remaining Metal
+  // allocations before Python/JS/other scripts can re-acquire the GPU.
+  "compounds": []
+}

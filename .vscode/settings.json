@@ -1,0 +1,38 @@
+{
+  // ── Prevents VS Code's own live-reload / dev-server from re-using
+  //    Metal contexts that might have been "dirty" on the last build.
+  "debug.node.autoAttachChildProcesses": false,
+  "typescript.detectPackageManager": "off",
+
+  // ─── LLDB / Swift debugging ───────────────────────────────────────────
+  // If VS Code detects this as a Swift/SwiftUI project contributing an
+  // Xcode Debugger extension these keys control its LLDB session.
+  "lldb.verboseLogging": false,
+
+  // ── Terminal hygiene ─────────────────────────────────────────────────
+  // Always use login shell so zprofile loads the clean path that points to
+  // the brewed llama-server build.
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.profiles.osx": {
+    "zsh": {
+      "path": "/bin/zsh",
+      "args": ["-l"],
+      "env": {
+        "PATH":   "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${env:PATH}",
+        "GGML_METAL_NO_RETAIN_MEMORY": "1",
+        "GGML_METAL_DEVICE_ID":        "0",
+        "GGML_METAL_RESOURCE_CACHE":   "0"
+      }
+    }
+  },
+
+  // ── Files ─────────────────────────────────────────────────────────────
+  "files.exclude": {
+    "**/*.swift.gyb": true
+  },
+  "search.exclude": {
+    "**/build": true,
+    "**/DerivedData": true,
+    "**/.swiftpm": true
+  }
+}

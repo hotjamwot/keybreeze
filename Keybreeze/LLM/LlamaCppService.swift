@@ -49,7 +49,7 @@ final class LlamaCppService: LLMProvider, @unchecked Sendable {
                     temperature: 0.7,
                     top_p: 0.9,
                     repeat_penalty: 1.1,
-                    cache_prompt: true
+                    cache_prompt: false
                 )
                 request.httpBody = try JSONEncoder().encode(body)
 

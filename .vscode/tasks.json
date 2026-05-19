@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pre-debug-isolation-cleanup",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/Scripts/pre-debug-cleanup.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": ["-lc"]
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "showReuseMessage": false
+      },
+      "description": "Kill stray llama-server procs and flush Metal cache before each debug session",
+      "runOptions": {
+        "runOn": "default"
+      }
+    },
+    {
+      "label": "post-debug-teardown",
+      "type": "shell",
+      "command": "/usr/bin/pkill",
+      "args": [
+        "-9", "-f", "llama-server"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "new",
+        "showReuseMessage": false
+      },
+      "description": "Force SIGKILL llama-server after debug session ends",
+      "runOptions": {
+        "runOn": "folderClose"
+      }
+    }
+  ]
+}

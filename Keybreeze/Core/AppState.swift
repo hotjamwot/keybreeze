@@ -92,7 +92,7 @@ final class AppState: ObservableObject {
             ModelOption(
                 id: gguf.id,
                 displayName: gguf.displayName,
-                ollamaId: "", // Not applicable
+                ollamaId: gguf.displayName, // Use display name for GGUF models so logs and prediction records have a meaningful identifier
                 ggufPath: gguf.id,
                 maxWords: 12,
                 verbosityBias: 0.35,

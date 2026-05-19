@@ -136,6 +136,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
 
     // Observe backend changes to rebuild the engine
     setUpBackendObservation()
+    // Observe server readiness so predictions fire as soon as the backend becomes ready
+    setUpServerReadinessObservation()
 
     // Wire up history recording when predictions complete
     scheduler.onPredictionComplete = { [weak self] mode, ttft, totalTime, text, cancelled, contextAtLaunch in
@@ -169,6 +171,11 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         guard let self else { return ("", "") }
         return (self.customSystemPrompt, self.styleNudge)
     }
+    // Wire the readiness gate — prevent predictions while the backend isn't ready
+    scheduler.canPredict = { [weak self] in
+        guard let self else { return false }
+        return self.appState.canRunPrediction
+    }
 }
 
     // MARK: — Backend lifecycle
@@ -188,6 +195,24 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
                     self.isSchedulerActive = true
                 }
                 self.log.info("Rebuilt engine for backend: \(newBackend.rawValue)")
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Observe llama-server state so that when it transitions from starting → running,
+    /// we automatically re-push the editor state to kick off pending predictions.
+    private func setUpServerReadinessObservation() {
+        appState.$llamaCppProcessManager
+            .map(\.state)
+            .removeDuplicates()
+            .sink { [weak self] state in
+                guard let self, self.isSchedulerActive else { return }
+                if state.isRunning {
+                    // Server just became ready — push the current editor state
+                    // so any pending debounces get a chance to fire.
+                    self.log.info("Server ready — pushing editor state")
+                    self.pushEditorState()
+                }
             }
             .store(in: &cancellables)
     }

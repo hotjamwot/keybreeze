@@ -19,6 +19,9 @@ final class PredictionScheduler {
     private var engine: PredictionEngine
     private var modelProvider: () -> ModelOption
     private var promptOverrides: () -> (system: String, styleNudge: String) = { ("", "") }
+    /// Optional gate: if set, predictions will only fire when this closure returns `true`.
+    /// Used to prevent requests to a backend that isn't ready yet (e.g. llama-server still loading).
+    var canPredict: (() -> Bool)?
     private let midTypeDebouncer = Debouncer()
     private let pauseDebouncer = Debouncer()
     private let log = Logger(subsystem: "app.keybreeze", category: "prediction-scheduler")
@@ -90,6 +93,13 @@ final class PredictionScheduler {
             return
         }
 
+        // If the backend isn't ready to serve predictions, don't even schedule debounces.
+        let ready = canPredict?() ?? true
+        guard ready else {
+            onStatusChange?("Backend not ready…")
+            return
+        }
+
         onStatusChange?("Typing…")
 
         midTypeDebouncer.schedule(after: .milliseconds(PredictionMode.midType.debounceMilliseconds)) { [weak self] in
@@ -116,6 +126,14 @@ final class PredictionScheduler {
 
     private func runPrediction(mode: PredictionMode) {
         guard isActive, let state = latestEditorState else { return }
+
+        // Double-check readiness right before launching (the debounce may have fired
+        // just before the backend became ready).
+        let ready = canPredict?() ?? true
+        guard ready else {
+            onStatusChange?("Backend not ready yet…")
+            return
+        }
 
         let model = modelProvider()
         onStatusChange?("Predicting (\(mode.rawValue))…")
