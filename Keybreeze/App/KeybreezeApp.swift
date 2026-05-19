@@ -22,5 +22,8 @@ struct KeybreezeApp: App {
                 .environmentObject(predictionSession)
         }
         .menuBarExtraStyle(.window)
+        .onChange(of: appState.selectedBackend) { _, _ in
+            // Backend changes are handled by AppState.handleBackendChange
+        }
     }
 }

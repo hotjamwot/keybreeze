@@ -25,6 +25,22 @@ struct MenuBarContentView: View {
                 }
             }
 
+            // Backend selector
+            HStack {
+                Picker("Backend", selection: $appState.selectedBackend) {
+                    ForEach(LLMBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+                .onChange(of: appState.selectedBackend) { _, newBackend in
+                    log.info("Switched to backend: \(newBackend.rawValue)")
+                }
+
+                Spacer()
+            }
+
             // Model selector row
             HStack {
                 Group {
@@ -35,24 +51,57 @@ struct MenuBarContentView: View {
                     } else {
                         Picker("Model", selection: $appState.selectedModel) {
                             ForEach(appState.availableModels) { option in
-                                Text(option.displayName).tag(option)
+                                HStack {
+                                    if option.isGGUF {
+                                        Image(systemName: "doc")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(option.displayName)
+                                }
+                                .tag(option)
                             }
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .onChange(of: appState.selectedModel) { _, newModel in
-                            log.info("Selected model: \(newModel.ollamaId) (\(newModel.displayName))")
+                            let id = newModel.ollamaId.isEmpty ? newModel.ggufPath ?? "" : newModel.ollamaId
+                            log.info("Selected model: \(id) (\(newModel.displayName))")
                             if predictionSession.tuningEnabled {
                                 predictionSession.syncTuningFromModel()
+                            }
+
+                            // If using llama.cpp and model changed, restart server
+                            if appState.selectedBackend == .llamaCpp, newModel.isGGUF, let path = newModel.ggufPath {
+                                Task {
+                                    do {
+                                        appState.modelCatalogStatus = "Loading model…"
+                                        try await appState.llamaCppProcessManager.restart(modelPath: path)
+                                        appState.modelCatalogStatus = ""
+                                    } catch {
+                                        appState.modelCatalogStatus = "Failed to load model: \(error.localizedDescription)"
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 Button("Refresh") {
-                    Task { await appState.refreshAvailableModelsFromOllama() }
+                    Task { await appState.refreshAvailableModels() }
                 }
                 .disabled(predictionSession.isPredicting)
+            }
+
+            // llama-server status (only visible when on llama.cpp backend)
+            if appState.selectedBackend == .llamaCpp {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(serverStateColor)
+                        .frame(width: 8, height: 8)
+                    Text(serverStateText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             // Catalog status (connection errors, empty list)
@@ -94,7 +143,27 @@ struct MenuBarContentView: View {
         .padding()
         .frame(minWidth: 680, minHeight: 600)
         .task {
-            await appState.refreshAvailableModelsFromOllama()
+            await appState.refreshAvailableModels()
+        }
+    }
+
+    // MARK: — llama-server status helpers
+
+    private var serverStateColor: Color {
+        switch appState.llamaCppProcessManager.state {
+        case .stopped:        return .gray
+        case .starting:       return .orange
+        case .running:        return .green
+        case .failed:         return .red
+        }
+    }
+
+    private var serverStateText: String {
+        switch appState.llamaCppProcessManager.state {
+        case .stopped:        return "llama-server: stopped"
+        case .starting:       return "llama-server: starting…"
+        case .running:        return "llama-server: running"
+        case .failed(let e):  return "llama-server: failed – \(e)"
         }
     }
 

@@ -1,12 +1,14 @@
 import Foundation
 
-/// A user-visible model choice mapped to a provider-specific model id (Ollama tag today).
+/// A user-visible model choice mapped to a provider-specific model id (Ollama tag or GGUF path).
 struct ModelOption: Equatable, Hashable, Identifiable, Sendable {
     /// Stable app id (menus, persistence); for catalog-driven models this matches `ollamaId`.
     let id: String
     let displayName: String
-    /// Ollama model tag passed to `/api/generate` (e.g. `gemma2:2b`).
+    /// Ollama model tag passed to `/api/generate` (e.g. `gemma2:2b`). Empty for GGUF models.
     let ollamaId: String
+    /// Absolute path to a GGUF file, if this is a llama.cpp model. Nil for Ollama models.
+    let ggufPath: String?
     /// Upper bound for streamed completion length (UI / post-process; prompt uses the same cap).
     let maxWords: Int
 
@@ -27,6 +29,9 @@ struct ModelOption: Equatable, Hashable, Identifiable, Sendable {
     let repeatPenalty: Double
     /// Confidence threshold: predictions below this are not displayed.
     let confidenceThreshold: Double
+
+    /// Whether this model is a local GGUF file (for llama.cpp).
+    var isGGUF: Bool { ggufPath != nil }
 }
 
 extension ModelOption {
@@ -43,6 +48,7 @@ enum ModelRegistry {
         id: "qwen25-3b",
         displayName: "Qwen 2.5 3B",
         ollamaId: "qwen2.5:3b",
+        ggufPath: nil,
         maxWords: 12,
         verbosityBias: 0.3,
         continuationBias: 0.5,
@@ -57,6 +63,7 @@ enum ModelRegistry {
         id: "gemma2-2b",
         displayName: "Gemma 2 2B",
         ollamaId: "gemma2:2b",
+        ggufPath: nil,
         maxWords: 12,
         verbosityBias: 0.35,
         continuationBias: 0.4,
@@ -84,6 +91,7 @@ enum ModelRegistry {
             id: tag,
             displayName: tag,
             ollamaId: tag,
+            ggufPath: nil,
             maxWords: 12,
             verbosityBias: 0.35,
             continuationBias: 0.45,

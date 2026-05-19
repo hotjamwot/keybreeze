@@ -1,10 +1,12 @@
 import Combine
 import Foundation
+import OSLog
 
 /// Phase 2.5 harness: simulated typing field wired to the prediction scheduler,
 /// with inline ghost text and runtime tuning controls.
 @MainActor
 final class PredictionSessionViewModel: ObservableObject {
+    private let log = Logger(subsystem: "app.keybreeze", category: "session-vm")
     @Published var draftText: String = "The night was unusually quiet and he noticed "
     @Published private(set) var suggestion: String = ""
     /// The last non-empty suggestion we displayed; persists across engine resets to avoid flicker.
@@ -83,6 +85,8 @@ var effectiveModelOption: ModelOption {
     private let scheduler: PredictionScheduler
     /// Prevents suggestion updates from the scheduler after tab acceptance until user types again
     @Published private var suggestionLocked = false
+    /// Observes backend changes to rebuild the engine
+    private var cancellables = Set<AnyCancellable>()
 
 init(appState: AppState, engine: PredictionEngine? = nil) {
     self.appState = appState
@@ -130,6 +134,9 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         self?.currentPredictionMode = mode?.rawValue ?? ""
     }
 
+    // Observe backend changes to rebuild the engine
+    setUpBackendObservation()
+
     // Wire up history recording when predictions complete
     scheduler.onPredictionComplete = { [weak self] mode, ttft, totalTime, text, cancelled, contextAtLaunch in
         guard let self else { return }
@@ -163,6 +170,38 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         return (self.customSystemPrompt, self.styleNudge)
     }
 }
+
+    // MARK: — Backend lifecycle
+
+    /// Observe backend changes in `AppState` and rebuild the prediction engine when the user switches.
+    private func setUpBackendObservation() {
+        appState.$selectedBackend
+            .dropFirst() // Skip the initial value
+            .sink { [weak self] newBackend in
+                guard let self else { return }
+                let wasActive = self.isSchedulerActive
+                if wasActive {
+                    self.isSchedulerActive = false
+                }
+                self.rebuildEngine(backend: newBackend)
+                if wasActive {
+                    self.isSchedulerActive = true
+                }
+                self.log.info("Rebuilt engine for backend: \(newBackend.rawValue)")
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Recreate the prediction engine and scheduler for a new backend.
+    private func rebuildEngine(backend: LLMBackend) {
+        let config = LLMConfiguration(
+            ollamaConfiguration: appState.ollamaConfiguration,
+            llamaCppConfiguration: appState.llamaCppConfiguration
+        )
+        // The engine is recreated but the scheduler callbacks remain wired.
+        // We don't swap the scheduler itself — just replace the underlying provider.
+        scheduler.replaceEngine(PredictionEngine(backend: backend, configuration: config))
+    }
 
     func draftTextChanged() {
         guard isSchedulerActive else { return }
@@ -237,6 +276,7 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
             id: base.id,
             displayName: base.displayName + " (tuned)",
             ollamaId: base.ollamaId,
+            ggufPath: base.ggufPath,
             maxWords: tuningMaxWords > 0 ? tuningMaxWords : base.maxWords,
             verbosityBias: verbosityBias,
             continuationBias: continuationBias,

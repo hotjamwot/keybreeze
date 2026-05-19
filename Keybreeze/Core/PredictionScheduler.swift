@@ -16,7 +16,7 @@ final class PredictionScheduler {
     /// and the context text that was used at prediction launch time.
     var onPredictionComplete: ((_ mode: PredictionMode, _ ttft: TimeInterval?, _ totalTime: TimeInterval, _ text: String, _ cancelled: Bool, _ contextAtLaunch: String) -> Void)?
 
-    private let engine: PredictionEngine
+    private var engine: PredictionEngine
     private var modelProvider: () -> ModelOption
     private var promptOverrides: () -> (system: String, styleNudge: String) = { ("", "") }
     private let midTypeDebouncer = Debouncer()
@@ -40,6 +40,16 @@ final class PredictionScheduler {
     /// Allows post-init replacement of the model provider (e.g. after `self` is fully initialized in the owner).
     func updateModelProvider(_ provider: @escaping () -> ModelOption) {
         modelProvider = provider
+    }
+
+    /// Replace the underlying engine when the backend changes (e.g. Ollama → llama.cpp).
+    /// Cancels any in-flight prediction and clears the suggestion.
+    func replaceEngine(_ newEngine: PredictionEngine) {
+        engine.cancel()
+        engine.clearSuggestion()
+        engine = newEngine
+        notifySuggestion()
+        log.info("Engine replaced")
     }
 
     func start() {

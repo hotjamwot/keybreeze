@@ -11,6 +11,8 @@
 		665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */; };
 		665610DC2FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D62FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift */; };
 		665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */; };
+		665610E2FBC5FC900C7B4D6 /* LlamaCppProcessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610E0FBC5FC900C7B4D4 /* LlamaCppProcessManager.swift */; };
+		665610E3FBC5FC900C7B4D7 /* LlamaCppModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610E1FBC5FC900C7B4D5 /* LlamaCppModelCatalog.swift */; };
 		A10000000000000000000001 /* KeybreezeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KeybreezeApp.swift */; };
 		A10000000000000000000002 /* AppKitLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppKitLifecycle.swift */; };
 		A10000000000000000000003 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* EditorState.swift */; };
@@ -46,6 +48,8 @@
 		665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppService.swift; sourceTree = "<group>"; };
 		665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMBackend.swift; sourceTree = "<group>"; };
 		665610D92FBC5FC900C7B4D3 /* LLMConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMConfiguration.swift; sourceTree = "<group>"; };
+		665610E0FBC5FC900C7B4D4 /* LlamaCppProcessManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppProcessManager.swift; sourceTree = "<group>"; };
+		665610E1FBC5FC900C7B4D5 /* LlamaCppModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppModelCatalog.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* KeybreezeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AppKitLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitLifecycle.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
@@ -148,7 +152,9 @@
 			isa = PBXGroup;
 			children = (
 				665610D62FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift */,
+				665610E0FBC5FC900C7B4D4 /* LlamaCppProcessManager.swift */,
 				665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */,
+				665610E1FBC5FC900C7B4D5 /* LlamaCppModelCatalog.swift */,
 				665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */,
 				665610D92FBC5FC900C7B4D3 /* LLMConfiguration.swift */,
 				A20000000000000000000004 /* LLMProvider.swift */,
@@ -271,6 +277,8 @@
 				665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */,
 				665610DC2FBC5FC900C7B4D3 /* LlamaCppConfiguration.swift in Sources */,
 				665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */,
+				665610E2FBC5FC900C7B4D6 /* LlamaCppProcessManager.swift in Sources */,
+				665610E3FBC5FC900C7B4D7 /* LlamaCppModelCatalog.swift in Sources */,
 				A10000000000000000000004 /* LLMProvider.swift in Sources */,
 				A10000000000000000000005 /* OllamaConfiguration.swift in Sources */,
 				A10000000000000000000006 /* OllamaLLMService.swift in Sources */,
@@ -432,7 +440,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -461,7 +469,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
