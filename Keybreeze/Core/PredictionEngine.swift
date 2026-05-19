@@ -179,12 +179,29 @@ init(
         discardLatencyTracking()
     }
 
+    /// Strips leading tokens that are nothing but punctuation (ellipsis, periods, etc.)
+    /// to prevent grammar errors like continuations starting with "." or "..."
+    private func sanitizeToken(_ token: String) -> String? {
+        // If the token is entirely punctuation (., !, ?, ..., etc.) and the current suggestion is empty,
+        // skip it — the model should start with a word, not punctuation.
+        let punctuationOnly = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            .allSatisfy { $0.isPunctuation || $0.isWhitespace }
+        if currentSuggestion.isEmpty && punctuationOnly && !token.isEmpty {
+            return nil
+        }
+        return token
+    }
+
     private func appendTokenRespectingWordCap(_ token: String, maxWords: Int, onToken: ((String) -> Void)?) {
         guard !suppressStreamUpdates else { return }
-        let proposed = currentSuggestion + token
+        
+        // Sanitize the token before appending
+        guard let sanitized = sanitizeToken(token) else { return }
+        
+        let proposed = currentSuggestion + sanitized
         if WordLimiter.wordCount(in: proposed) <= maxWords {
             currentSuggestion = proposed
-            onToken?(token)
+            onToken?(sanitized)
             return
         }
         let capped = WordLimiter.truncateToMaxWords(proposed, maxWords: maxWords)

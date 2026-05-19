@@ -7,8 +7,8 @@ enum PredictionMode: String, Sendable {
 
     var debounceMilliseconds: Int {
         switch self {
-        case .midType: 150
-        case .pause: 450
+        case .midType: 400
+        case .pause: 800
         }
     }
 

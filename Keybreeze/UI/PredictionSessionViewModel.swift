@@ -131,15 +131,25 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
     }
 
     // Wire up history recording when predictions complete
-    scheduler.onPredictionComplete = { [weak self] mode, ttft, totalTime, text, cancelled in
+    scheduler.onPredictionComplete = { [weak self] mode, ttft, totalTime, text, cancelled, contextAtLaunch in
         guard let self else { return }
+        // Use the context that was captured at prediction launch time,
+        // not the current draftText (which may have changed by now)
+        let resolution: PredictionResolution
+        if cancelled {
+            resolution = text.isEmpty ? .cancelled : .invalidated
+        } else if text.isEmpty {
+            resolution = .cancelled
+        } else {
+            resolution = .ignored
+        }
         recordPrediction(
-            context: draftText,
+            context: contextAtLaunch,
             continuation: text,
             ttft: ttft,
             totalTime: totalTime,
             mode: mode.rawValue,
-            resolution: cancelled ? .cancelled : .ignored
+            resolution: resolution
         )
     }
 
@@ -193,19 +203,16 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         // so the remaining words stay visible until user types again
         suggestionLocked = true
         
-        // Record this prediction as accepted for history tracking
-        if let modeStr = currentPredictionMode.isEmpty ? nil : currentPredictionMode {
-            // Record the context before the accepted word and the accepted word itself
-            let contextBefore = String(draftText.dropLast(accepted.count + 1)) // +1 for the space
-            recordPrediction(
-                context: contextBefore,
-                continuation: accepted,
-                ttft: nil,
-                totalTime: 0,
-                mode: modeStr,
-                resolution: .accepted
-            )
-        }
+        // Record this prediction as accepted for history tracking.
+        // currentPredictionMode is now properly set by the scheduler's onModeChange callback.
+        recordPrediction(
+            context: String(draftText.dropLast(accepted.count + 1)), // text before the accepted word
+            continuation: accepted,
+            ttft: nil,
+            totalTime: 0,
+            mode: currentPredictionMode,
+            resolution: .accepted
+        )
         
         // If there's no remaining suggestion, clear the last displayed suggestion
         if suggestion.isEmpty {

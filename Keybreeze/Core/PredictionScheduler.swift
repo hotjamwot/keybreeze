@@ -12,8 +12,9 @@ final class PredictionScheduler {
     var onStatusChange: ((String) -> Void)?
     var onModeChange: ((PredictionMode?) -> Void)?
     /// Called when a prediction finishes (normal completion or cancellation).
-    /// Provides mode, ttft, totalTime, the resulting text, and whether it was cancelled.
-    var onPredictionComplete: ((_ mode: PredictionMode, _ ttft: TimeInterval?, _ totalTime: TimeInterval, _ text: String, _ cancelled: Bool) -> Void)?
+    /// Provides mode, ttft, totalTime, the resulting text, whether it was cancelled,
+    /// and the context text that was used at prediction launch time.
+    var onPredictionComplete: ((_ mode: PredictionMode, _ ttft: TimeInterval?, _ totalTime: TimeInterval, _ text: String, _ cancelled: Bool, _ contextAtLaunch: String) -> Void)?
 
     private let engine: PredictionEngine
     private var modelProvider: () -> ModelOption
@@ -22,6 +23,9 @@ final class PredictionScheduler {
     private let pauseDebouncer = Debouncer()
     private let log = Logger(subsystem: "app.keybreeze", category: "prediction-scheduler")
     private var observationGeneration: UInt64 = 0
+    /// Captured context text at prediction launch time, stored so completion callbacks
+    /// record the correct context (not the text that may have changed by completion time).
+    private var contextSnapshotAtLaunch: String = ""
 
     init(engine: PredictionEngine, modelProvider: @escaping () -> ModelOption) {
         self.engine = engine
@@ -54,22 +58,24 @@ final class PredictionScheduler {
         onStatusChange?("Scheduler stopped")
     }
 
-    /// Call on every editor change (keystroke). Cancels stale work and reschedules both modes.
+    /// Call on every editor change (keystroke). Reschedules both modes.
+    /// Does NOT cancel in-flight predictions — they continue streaming until a new one actually fires.
     /// Does NOT clear the suggestion — the old prediction stays visible until the new one arrives.
+    /// Note: observationGeneration is NOT bumped here — it's only bumped in runPrediction() when a
+    /// new prediction actually launches. This ensures in-flight observers aren't killed prematurely
+    /// by a keystroke that doesn't start a new prediction (because engine.isRunning was true).
     func editorStateChanged(_ state: EditorState) {
         guard isActive else { return }
 
         latestEditorState = state
-        observationGeneration &+= 1
-        engine.cancel()
-        // Keep the old suggestion visible until the new prediction streams in.
-        notifyRunning(false)
 
+        // Cancel debouncers but NOT the engine — let in-flight predictions finish
         midTypeDebouncer.cancel()
         pauseDebouncer.cancel()
 
         let trimmed = state.textBeforeCursor.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 3 else {
+            notifyRunning(false)
             onStatusChange?("Waiting for more text…")
             return
         }
@@ -77,11 +83,24 @@ final class PredictionScheduler {
         onStatusChange?("Typing…")
 
         midTypeDebouncer.schedule(after: .milliseconds(PredictionMode.midType.debounceMilliseconds)) { [weak self] in
-            self?.runPrediction(mode: .midType)
+            guard let self else { return }
+            // If the engine is already predicting, don't cancel it — let it finish.
+            // A slightly stale suggestion is infinitely better than no suggestion.
+            // The delayed start means predictions survive long enough for the user to see and accept them.
+            if engine.isRunning {
+                log.debug("Mid-type debounce fired but engine already running — letting it finish")
+                return
+            }
+            self.runPrediction(mode: .midType)
         }
 
         pauseDebouncer.schedule(after: .milliseconds(PredictionMode.pause.debounceMilliseconds)) { [weak self] in
-            self?.runPrediction(mode: .pause)
+            guard let self else { return }
+            if engine.isRunning {
+                log.debug("Pause debounce fired but engine already running — letting it finish")
+                return
+            }
+            self.runPrediction(mode: .pause)
         }
     }
 
@@ -90,9 +109,13 @@ final class PredictionScheduler {
 
         let model = modelProvider()
         onStatusChange?("Predicting (\(mode.rawValue))…")
+        onModeChange?(mode)
         notifyRunning(true)
 
         log.debug("Scheduling predict mode=\(mode.rawValue, privacy: .public)")
+
+        // Snapshot the context at prediction launch time
+        contextSnapshotAtLaunch = state.textBeforeCursor
 
         let prompts = promptOverrides()
         engine.predict(
@@ -112,12 +135,26 @@ final class PredictionScheduler {
     }
 
     private func observeEngineUntilIdle(mode: PredictionMode, generation: UInt64) async {
+        // Capture the context that was current when this prediction was launched
+        let context = contextSnapshotAtLaunch
+
         while engine.isRunning {
-            guard generation == observationGeneration else { return }
+            guard generation == observationGeneration else {
+                // Prediction was overtaken by a newer one — fire completion with cancelled flag
+                if let metrics = engine.lastRunMetrics {
+                    onPredictionComplete?(mode, metrics.ttft, metrics.totalTime, engine.currentSuggestion, true, context)
+                }
+                return
+            }
             notifySuggestion()
             try? await Task.sleep(for: .milliseconds(30))
         }
-        guard generation == observationGeneration else { return }
+        guard generation == observationGeneration else {
+            if let metrics = engine.lastRunMetrics {
+                onPredictionComplete?(mode, metrics.ttft, metrics.totalTime, engine.currentSuggestion, true, context)
+            }
+            return
+        }
         notifySuggestion()
         notifyRunning(false)
         if isActive {
@@ -126,7 +163,7 @@ final class PredictionScheduler {
 
         // Fire completion callback for history tracking
         if let metrics = engine.lastRunMetrics {
-            onPredictionComplete?(mode, metrics.ttft, metrics.totalTime, engine.currentSuggestion, metrics.cancelled)
+            onPredictionComplete?(mode, metrics.ttft, metrics.totalTime, engine.currentSuggestion, metrics.cancelled, context)
         }
     }
 
