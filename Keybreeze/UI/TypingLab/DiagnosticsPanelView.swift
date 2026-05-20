@@ -88,6 +88,13 @@ diagnosticItem(label: "Mode", value: predictionSession.currentPredictionMode.isE
         log += "Repeat Penalty: \(model.repeatPenalty)\n"
         log += "Confidence Threshold: \(model.confidenceThreshold)\n"
         log += "\n"
+        log += "=== Word Caps ===\n"
+        log += "Model maxWords: \(model.maxWords)\n"
+        let midType = predictionSession.midTypeWords > 0 ? "\(predictionSession.midTypeWords)" : "default (3)"
+        let pause = predictionSession.pauseWords > 0 ? "\(predictionSession.pauseWords)" : "default (5)"
+        log += "Mid-Type cap: \(midType)\n"
+        log += "Pause cap: \(pause)\n"
+        log += "\n"
         log += "=== Recent Predictions (last 20) ===\n"
         for record in history.allRecords.suffix(20) {
             log += "\n"
@@ -107,6 +114,7 @@ diagnosticItem(label: "Mode", value: predictionSession.currentPredictionMode.isE
         log += "Acceptance Rate: \(String(format: "%.1f", history.acceptanceRate * 100))%\n"
         log += "Avg TTFT: \(history.averageTimeToFirstToken > 0 ? String(format: "%.0fms", history.averageTimeToFirstToken * 1000) : "—")\n"
         log += "Avg Total Time: \(history.averageTotalTime > 0 ? String(format: "%.0fms", history.averageTotalTime * 1000) : "—")\n"
+        log += "Word Caps: midType=\(midType), pause=\(pause)\n"
         return log
     }
 }

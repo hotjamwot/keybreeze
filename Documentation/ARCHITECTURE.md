@@ -2,9 +2,11 @@
 
 ## What Keybreeze Is
 
-A **macOS menu bar app** providing **local, low-latency text continuation** (autocomplete). Uses **Ollama** or **llama.cpp** over HTTP. Includes **Typing Lab** — a permanent dev environment with live playground, diagnostics, prediction history, prompt editing, and runtime tuning.
+A **macOS menu bar app** providing **local, low-latency text continuation** (autocomplete). Uses **Ollama** (primary) or **llama.cpp** (secondary/experimental) over HTTP. Includes **Typing Lab** — a permanent dev environment with live playground, diagnostics, prediction history, prompt editing, and runtime tuning.
 
 **Design intent:** continuation only, short outputs, provider-agnostic core (`LLMProvider`), relentless focus on typing feel over raw intelligence.
+
+Not an inference infrastructure project. The LLM layer is replaceable plumbing — simplified to the smallest set of abstractions that pay rent.
 
 ---
 
@@ -26,8 +28,8 @@ A **macOS menu bar app** providing **local, low-latency text continuation** (aut
 | Path | Role |
 |------|------|
 | `Keybreeze/App/` | `@main` entry, AppKit activation policy, termination cleanup |
-| `Keybreeze/Core/` | `AppState`, `EditorState`, `ModelRegistry`, `ContextBuilder`, `PredictionMode`, `PredictionEngine`, `PredictionScheduler`, `PredictionHistory`, `ShadowPredictor` |
-| `Keybreeze/LLM/` | `LLMProvider` protocol, Ollama + llama.cpp backends, `PromptBuilder` |
+| `Keybreeze/Core/` | `AppState`, `EditorState`, `ModelRegistry`, `ContextBuilder`, `PredictionMode`, `PredictionEngine`, `PredictionScheduler`, `PredictionHistory`, `ShadowPredictor`, `AccessibilityManager`, `InputSourceMonitor`, `AppSettings` |
+| `Keybreeze/LLM/` | `LLMProvider` protocol, `LLMBackend` enum, `LLMConfig`, Ollama + llama.cpp services (with internalized model catalog + process mgmt), `PromptBuilder` |
 | `Keybreeze/UI/` | Menu bar window, `PredictionSessionViewModel`, `TypingLab/` subfolder |
 | `Keybreeze/Utils/` | `WordLimiter`, `Debouncer`, `KeybreezeLatencyLogger` |
 
@@ -37,16 +39,19 @@ A **macOS menu bar app** providing **local, low-latency text continuation** (aut
 
 ```
 KeybreezeApp
- ├── AppState (selectedModel, selectedBackend, model catalog, process manager)
+ ├── AppState (selectedModel, selectedBackend, LLMConfig, model catalog, server state)
+ ├── AccessibilityManager (singleton: focused app detection, AX text read, insertion)
+ ├── InputSourceMonitor (singleton: IME composition safety gate)
  └── PredictionSessionViewModel (draft text → scheduler → engine → provider)
+      ├── AppSettings (consolidated Codable settings, single save/load entry point)
       └── PredictionScheduler (debounced midType/pause loop)
            └── PredictionEngine (single stream, word cap, cancellation)
                 └── LLMProvider (OllamaLLMService | LlamaCppService)
 ```
 
-- **Backend switching:** `AppState.selectedBackend` triggers `handleBackendChange()` which toggles model catalog, stops/starts `llama-server`, and rebuilds the engine.
-- **Process management:** `LlamaCppProcessManager` spawns `/opt/homebrew/bin/llama-server`, waits for `/health` to respond `{"status":"ok"}`, and SIGKILLs on stop to free the port immediately.
-- **GGUF scanning:** `LlamaCppModelCatalog.scanDirectory()` lists `.gguf` files from the configured models directory and maps them to `ModelOption` instances.
+- **Backend switching:** `AppState.selectedBackend` triggers `handleBackendChange()` which toggles model catalog, manages `LlamaCppService` server lifecycle, and rebuilds the engine.
+- **Process management:** Internal to `LlamaCppService` — spawns `/opt/homebrew/bin/llama-server`, health-checks via `/health`, and SIGKILLs on stop. Exposes only `serverState` for UI readiness feedback.
+- **GGUF scanning:** `LlamaCppService.scanModels()` lists `.gguf` files from the configured models directory and maps them to `ModelOption` instances.
 
 ---
 
@@ -66,7 +71,7 @@ KeybreezeApp
 ### LLMProvider Protocol
 ```swift
 protocol LLMProvider {
-    func streamCompletion(prompt: String, model: String, onToken: @escaping (String) -> Void) async throws
+    func streamCompletion(prompt: String, model: String, modelOption: ModelOption, onToken: @escaping (String) -> Void) async throws
     func cancel()
 }
 ```
@@ -75,18 +80,36 @@ protocol LLMProvider {
 
 | Backend | Service | How it works |
 |---------|---------|--------------|
-| Ollama | `OllamaLLMService` | SSE streaming via `/api/generate`, model tag sent per-request |
-| llama.cpp | `LlamaCppService` | Non-streaming `POST /completion` (llama.cpp SSE has no terminating event, so non-streaming is used for reliability). Model loaded at server start, `model` param unused. |
+| Ollama (primary) | `OllamaLLMService` | SSE streaming via `/api/generate`, model tag sent per-request. Model catalog: `OllamaLLMService.fetchInstalledTags(baseURL:)` |
+| llama.cpp (experimental) | `LlamaCppService` | Non-streaming `POST /completion` (llama.cpp SSE has no terminating event, so non-streaming is used for reliability). Model loaded at server start. Model catalog: `LlamaCppService.scanModels(directory:)`. Process lifecycle fully internalised (start/stop/health-check). |
+
+### Configuration
+
+A single flat `LLMConfig` struct replaces the exploded `LLMConfiguration` + `OllamaConfiguration` + `LlamaCppConfiguration` pattern:
+
+```swift
+struct LLMConfig: Equatable, Sendable {
+    var backend: LLMBackend = .ollama
+    var ollamaBaseURL: URL = URL(string: "http://127.0.0.1:11434")!
+    var llamaCppBaseURL: URL = URL(string: "http://127.0.0.1:11345")!
+    var llamaCppModelsDirectory: String = "/Users/..."
+}
+```
+
+`AppState` holds a single `config` property and exposes `effectiveConfig` for engine creation. Consumers no longer assemble sub-configs.
 
 ### llama.cpp Lifecycle
-- `LlamaCppProcessManager` auto-launches `llama-server` when backend switches to `.llamaCpp`.
-- Health-checked via `/health` endpoint (up to 22.5s timeout for model loading).
-- Auto-killed on backend switch or app termination (SIGKILL for immediate port release).
-- Binary path: `/opt/homebrew/bin/llama-server` (Homebrew install).
+
+- `LlamaCppService` owns the full lifecycle internally (spawn, health-check, SIGTERM→SIGKILL).
+- `AppState` observes `llamaCppServerState` for UI readiness; it does not hold a reference to a process manager.
+- On backend switch to `llamaCpp`, `AppState` calls `addLlamaCppService()` which wires state observation and stores an internal reference to the service.
+- On app termination, `AppState.stopLlamaCppServer()` is called (via `AppKitLifecycle`).
+- Metal isolation env vars (`GGML_METAL_NO_RETAIN_MEMORY`, `GGML_METAL_DEVICE_ID`, `GGML_METAL_RESOURCE_CACHE`) are injected by the service.
 
 ### GGUF Models
-- Directory: configurable via `LlamaCppConfiguration.modelsDirectory` (defaults to user's path).
-- Scanned by `LlamaCppModelCatalog` for `.gguf` files; display names derived from filenames.
+
+- Directory: configurable via `LLMConfig.llamaCppModelsDirectory`.
+- Scanned by `LlamaCppService.scanModels(directory:)` for `.gguf` files; display names derived from filenames.
 - Each GGUF file becomes a `ModelOption` with `ggufPath` set and `ollamaId` empty.
 
 ---
@@ -94,17 +117,18 @@ protocol LLMProvider {
 ## Model Selection
 
 - `AppState.refreshAvailableModels()` dispatches to the current backend's catalog.
-- **Ollama:** `OllamaModelCatalog.fetchInstalledTags()` hits `GET /api/tags`.
-- **llama.cpp:** `LlamaCppModelCatalog.scanDirectory()` walks the GGUF directory.
+- **Ollama:** `OllamaLLMService.fetchModelOptions(baseURL:)` hits `GET /api/tags` and resolves via `ModelRegistry`.
+- **llama.cpp:** `LlamaCppService.scanModels(directory:)` walks the GGUF directory.
 - `ModelRegistry.option(resolvingOllamaTag:)` maps tags to `ModelOption` with per-model presets.
 
 ---
 
 ## Key Design Decisions
 
+- **LLM layer is deliberately thin.** No infrastructure-style layering, no over-separated config objects, no duplicated backend-specific logic. Ollama is the primary production backend; llama.cpp is secondary with its complexity internalised privately.
 - **Sandbox disabled** (`ENABLE_APP_SANDBOX = NO`) — required for file system access to GGUF directory and spawning `llama-server` as a child process.
 - **Non-streaming for llama.cpp** — SSE mode never sends a terminating event, causing `bytes.lines` to hang indefinitely. Non-streaming delivers full response in one HTTP exchange (~400ms for 32 tokens on Gemma 4 E2B).
-- **Runtime parameters** (`temperature`, `topP`, `repeatPenalty`, `confidenceThreshold`, biases) are user-tunable via Typing Lab sliders. Aggression presets (Conservative/Balanced/Aggressive) batch-set these.
+- **Runtime parameters** (`temperature`, `topP`, `repeatPenalty`, `presencePenalty`, `confidenceThreshold`, biases) are user-tunable via Typing Lab sliders. Aggression presets (Conservative/Balanced/Aggressive) batch-set these.
 - **Prompt editing** — system and continuation prompts are overridable at runtime via the Typing Lab.
 - **Shadow prediction** — `ShadowPredictor` runs silent background predictions for quality evaluation.
 - **Prediction history** — ring buffer (200 records) with TTFT, total time, resolution tracking.
@@ -121,4 +145,4 @@ protocol LLMProvider {
 
 ## Xcode Project
 
-New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBuildFile, group, Sources phase). The new llama.cpp files (`LlamaCppProcessManager.swift`, `LlamaCppModelCatalog.swift`) have been added.
+New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBuildFile, group, Sources phase). The LLM layer consists of 5 files: `LLMProvider.swift`, `LLMBackend.swift`, `OllamaLLMService.swift`, `LlamaCppService.swift`, `PromptBuilder.swift`.

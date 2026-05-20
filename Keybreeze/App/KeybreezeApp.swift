@@ -7,10 +7,7 @@ struct KeybreezeApp: App {
 
     init() {
         AppKitLifecycle.configureMenuBarAgentApp()
-        let sharedAppState = AppState(
-            ollamaConfiguration: OllamaConfiguration(),
-            llamaCppConfiguration: LlamaCppConfiguration()
-        )
+        let sharedAppState = AppState(config: LLMConfig())
         _appState = StateObject(wrappedValue: sharedAppState)
         _predictionSession = StateObject(wrappedValue: PredictionSessionViewModel(appState: sharedAppState))
     }

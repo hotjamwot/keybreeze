@@ -15,10 +15,14 @@ final class PredictionScheduler {
     /// Provides mode, ttft, totalTime, the resulting text, whether it was cancelled,
     /// and the context text that was used at prediction launch time.
     var onPredictionComplete: ((_ mode: PredictionMode, _ ttft: TimeInterval?, _ totalTime: TimeInterval, _ text: String, _ cancelled: Bool, _ contextAtLaunch: String) -> Void)?
+    /// Called when a prediction fails with an error. The error message is surfaced to the user.
+    var onPredictionError: ((_ mode: PredictionMode, _ errorMessage: String) -> Void)?
 
     private var engine: PredictionEngine
     private var modelProvider: () -> ModelOption
     private var promptOverrides: () -> (system: String, styleNudge: String) = { ("", "") }
+    /// Per-mode word cap overrides. 0 means use default per-mode limits.
+    private var wordCapOverrides: () -> (midTypeWords: Int, pauseWords: Int) = { (0, 0) }
     /// Optional gate: if set, predictions will only fire when this closure returns `true`.
     /// Used to prevent requests to a backend that isn't ready yet (e.g. llama-server still loading).
     var canPredict: (() -> Bool)?
@@ -29,15 +33,30 @@ final class PredictionScheduler {
     /// Captured context text at prediction launch time, stored so completion callbacks
     /// record the correct context (not the text that may have changed by completion time).
     private var contextSnapshotAtLaunch: String = ""
+    /// Timing metrics for the current prediction
+    private var latencyRequestStart: Date?
+    private var latencyFirstToken: Date?
 
     init(engine: PredictionEngine, modelProvider: @escaping () -> ModelOption) {
         self.engine = engine
         self.modelProvider = modelProvider
+        // Bridge error callbacks from the engine up to the scheduler consumers
+        engine.onPredictionError = { [weak self] errorMessage in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                self?.onPredictionError?(.midType, errorMessage)
+            }
+        }
     }
 
     /// Overrides for custom prompts from the Typing Lab (runtime prompt editing).
     func updatePromptOverrides(_ provider: @escaping () -> (system: String, styleNudge: String)) {
         promptOverrides = provider
+    }
+
+    /// Per-mode word cap overrides. 0 means use default.
+    func updateWordCapOverrides(_ provider: @escaping () -> (midTypeWords: Int, pauseWords: Int)) {
+        wordCapOverrides = provider
     }
 
     /// Allows post-init replacement of the model provider (e.g. after `self` is fully initialized in the owner).
@@ -51,6 +70,13 @@ final class PredictionScheduler {
         engine.cancel()
         engine.clearSuggestion()
         engine = newEngine
+        // Bridge error callbacks from the new engine up to the scheduler consumers
+        engine.onPredictionError = { [weak self] errorMessage in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                self?.onPredictionError?(.midType, errorMessage)
+            }
+        }
         notifySuggestion()
         log.info("Engine replaced")
     }
@@ -144,14 +170,19 @@ final class PredictionScheduler {
 
         // Snapshot the context at prediction launch time
         contextSnapshotAtLaunch = state.textBeforeCursor
+        latencyRequestStart = Date()
+        latencyFirstToken = nil
 
         let prompts = promptOverrides()
+        let wordCaps = wordCapOverrides()
         engine.predict(
             editorState: state,
             model: model,
             mode: mode,
             customSystemPrompt: prompts.system,
-            styleNudge: prompts.styleNudge
+            styleNudge: prompts.styleNudge,
+            midTypeWords: wordCaps.midTypeWords,
+            pauseWords: wordCaps.pauseWords
         )
 
         observationGeneration &+= 1

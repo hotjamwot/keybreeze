@@ -19,11 +19,10 @@ final class ShadowPredictor {
     var onShadowPrediction: ((String, String, TimeInterval?, TimeInterval, String) -> Void)?
 
 init(
-    backend: LLMBackend,
-    configuration: LLMConfiguration,
+    config: LLMConfig,
     modelProvider: @escaping () -> ModelOption
 ) {
-    self.engine = PredictionEngine(backend: backend, configuration: configuration)
+    self.engine = PredictionEngine(config: config)
     self.modelProvider = modelProvider
 }
 
@@ -55,9 +54,9 @@ init(
         let generation = observationGeneration
         let model = modelProvider()
         let mode = PredictionMode.midType
-        let maxWords = mode.maxWords(modelCap: model.maxWords)
+        let maxWords = mode.maxWords(midTypeWords: 0, pauseWords: 0, modelCap: model.maxWords)
         let focused = ContextBuilder.focusedState(from: state)
-        let prompt = PromptBuilder.continuationPrompt(for: focused, modelOption: model)
+        let prompt = PromptBuilder.continuationPrompt(for: focused, modelOption: model, mode: mode)
 
         let startTime = Date()
         var firstTokenTime: Date?

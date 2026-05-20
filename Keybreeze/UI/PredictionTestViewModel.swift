@@ -18,14 +18,7 @@ final class PredictionTestViewModel: ObservableObject {
 
     init(appState: AppState, engine: PredictionEngine? = nil) {
         self.appState = appState
-        let config = LLMConfiguration(
-            ollamaConfiguration: appState.ollamaConfiguration,
-            llamaCppConfiguration: appState.llamaCppConfiguration
-        )
-        self.engine = engine ?? PredictionEngine(
-            backend: appState.selectedBackend,
-            configuration: config
-        )
+        self.engine = engine ?? PredictionEngine(config: appState.effectiveConfig)
     }
 
     func cancel() {

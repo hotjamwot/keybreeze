@@ -9,12 +9,16 @@ import OSLog
 final class PredictionSessionViewModel: ObservableObject {
     private let log = Logger(subsystem: "app.keybreeze", category: "session-vm")
     @Published var draftText: String = "The night was unusually quiet and he noticed "
-    @Published private(set) var suggestion: String = ""
+    /// Stores the previous draftText value to detect deletions/backspaces.
+    private var previousDraftText: String = ""
+    @Published var suggestion: String = ""
     /// The last non-empty suggestion we displayed; persists across engine resets to avoid flicker.
     private var lastDisplayedSuggestion: String = ""
     @Published private(set) var statusMessage: String = "Scheduler stopped"
     @Published private(set) var isPredicting: Bool = false
     @Published private(set) var currentPredictionMode: String = ""
+    @Published var currentLatency: TimeInterval? = nil
+    @Published var selectedTab: TypingLabTab = .playground
     @Published var isSchedulerActive: Bool = false {
         didSet {
             if isSchedulerActive {
@@ -26,9 +30,28 @@ final class PredictionSessionViewModel: ObservableObject {
                 isPredicting = false
                 currentPredictionMode = ""
                 statusMessage = "Scheduler stopped"
+                // Clear correction state when scheduler stops
+                correctionState = nil
+                backspaceCount = 0
+                previousDraftText = ""
             }
         }
     }
+    
+    // MARK: — Backspace correction tracking
+    /// Tracks the number of consecutive backspaces detected.
+    @Published private var backspaceCount: Int = 0
+    /// Tracks the text state before backspaces occurred, used to detect deletion patterns.
+    private var textBeforeBackspace: String = ""
+    /// Current correction state (if any).
+    @Published var correctionState: CorrectionState?
+
+    // MARK: — Settings Store (Consolidated)
+
+    /// Consolidated settings used for persistence. Individual `@Published` properties
+    /// below are the single source of truth for SwiftUI bindings; `settingsStore`
+    /// is kept in sync for save/load.
+    private var settingsStore: AppSettings = .load()
 
     // MARK: — Runtime tuning overrides
 
@@ -46,6 +69,17 @@ final class PredictionSessionViewModel: ObservableObject {
     }
     /// Overrides `maxWords` on the model. 0 means "use model default".
     @Published var tuningMaxWords: Int = 0 {
+        didSet { if tuningEnabled { updateTunedModel() } }
+    }
+
+    // MARK: — Per-mode word caps
+
+    /// Mid-type word cap override (0 = use default).
+    @Published var midTypeWords: Int = 0 {
+        didSet { if tuningEnabled { updateTunedModel() } }
+    }
+    /// Pause word cap override (0 = use default).
+    @Published var pauseWords: Int = 0 {
         didSet { if tuningEnabled { updateTunedModel() } }
     }
 
@@ -86,8 +120,8 @@ final class PredictionSessionViewModel: ObservableObject {
     @Published var confidenceThreshold: Double = ModelOption.defaultConfidenceThreshold {
         didSet { if tuningEnabled { updateTunedModel() } }
     }
-@Published var customSystemPrompt: String = PromptBuilder.defaultSystemPrompt
-@Published var styleNudge: String = ""
+    @Published var customSystemPrompt: String = PromptBuilder.defaultSystemPrompt
+    @Published var styleNudge: String = ""
 
 /// Behaviour aggression preset
 @Published var aggressionPreset: AggressionPreset = .balanced {
@@ -114,15 +148,7 @@ var effectiveModelOption: ModelOption {
 
 init(appState: AppState, engine: PredictionEngine? = nil) {
     self.appState = appState
-    // Create a unified configuration from the appState's configurations
-    let config = LLMConfiguration(
-        ollamaConfiguration: appState.ollamaConfiguration,
-        llamaCppConfiguration: appState.llamaCppConfiguration
-    )
-    let sharedEngine = engine ?? PredictionEngine(
-        backend: appState.selectedBackend,
-        configuration: config
-    )
+    let sharedEngine = engine ?? PredictionEngine(config: appState.effectiveConfig)
     // Build scheduler with a fallback provider that doesn't capture self.
     // We immediately reassign the provider below to use self.effectiveModelOption.
     self.scheduler = PredictionScheduler(engine: sharedEngine) {
@@ -165,6 +191,13 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
     // Observe server readiness so predictions fire as soon as the backend becomes ready
     setUpServerReadinessObservation()
 
+    // Wire up error handling so prediction failures are visible in the UI
+    scheduler.onPredictionError = { [weak self] mode, errorMessage in
+        guard let self else { return }
+        self.statusMessage = "Error: \(errorMessage)"
+        self.log.error("Prediction \(mode.rawValue) failed: \(errorMessage, privacy: .public)")
+    }
+
     // Wire up history recording when predictions complete
     scheduler.onPredictionComplete = { [weak self] mode, ttft, totalTime, text, cancelled, contextAtLaunch in
         guard let self else { return }
@@ -192,19 +225,39 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
     scheduler.updateModelProvider { [weak self] in
         self?.effectiveModelOption ?? appState.selectedModel
     }
-    // Wire runtime prompt overrides from the Typing Lab
+        // Wire runtime prompt overrides from the Typing Lab
     scheduler.updatePromptOverrides { [weak self] in
         guard let self else { return ("", "") }
         return (self.customSystemPrompt, self.styleNudge)
     }
-// Wire the readiness gate — prevent predictions while the backend isn't ready
+
+    // Wire per-mode word cap overrides from the Typing Lab
+    scheduler.updateWordCapOverrides { [weak self] in
+        guard let self else { return (0, 0) }
+        return (self.midTypeWords, self.pauseWords)
+    }
+    // Wire the readiness gate — prevent predictions while the backend isn't ready
      scheduler.canPredict = { [weak self] in
          guard let self else { return false }
-         // Gate on excluded apps first (prevents invasive predictions)
-         let frontmostID = AccessibilityManager.shared.focusedAppBundleID()
-         if frontmostID.map(self.isExcluded) ?? false { return false }
+         // NOTE: Frontmost app exclusion is NOT checked here because this gate
+         // also protects the Typing Lab playground. Keybreeze is a menu-bar app
+         // (.accessory activation policy), so it's never "frontmost" — the
+         // frontmost bundle ID always refers to the app that was active before
+         // the menu bar was opened. Checking it here would silently block
+         // playground predictions whenever the user's frontmost app (e.g.
+         // Terminal, VS Code) is in the exclusion list.
+         //
+         // App gating for real-world (AX context) triggering will be enforced
+         // at the trigger layer when that integration is added.
+         
+         // Gate on IME safety — suspend auto-trigger while a non-ASCII IME is composing
+         if !InputSourceMonitor.shared.isASCIICompatible { return false }
          return self.appState.canRunPrediction
      }
+
+     // Touch InputSourceMonitor.shared to ensure the CFNotificationCenter observer
+     // is registered before the first debounce fires.
+     _ = InputSourceMonitor.shared
 
      // Load persisted app gating settings
      loadSettings()
@@ -234,8 +287,7 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
     /// Observe llama-server state so that when it transitions from starting → running,
     /// we automatically re-push the editor state to kick off pending predictions.
     private func setUpServerReadinessObservation() {
-        appState.$llamaCppProcessManager
-            .map(\.state)
+        appState.$llamaCppServerState
             .removeDuplicates()
             .sink { [weak self] state in
                 guard let self, self.isSchedulerActive else { return }
@@ -251,17 +303,36 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
 
     /// Recreate the prediction engine and scheduler for a new backend.
     private func rebuildEngine(backend: LLMBackend) {
-        let config = LLMConfiguration(
-            ollamaConfiguration: appState.ollamaConfiguration,
-            llamaCppConfiguration: appState.llamaCppConfiguration
-        )
         // The engine is recreated but the scheduler callbacks remain wired.
         // We don't swap the scheduler itself — just replace the underlying provider.
-        scheduler.replaceEngine(PredictionEngine(backend: backend, configuration: config))
+        scheduler.replaceEngine(PredictionEngine(config: appState.effectiveConfig))
     }
 
     func draftTextChanged() {
         guard isSchedulerActive else { return }
+        
+        // Detect backspace events by comparing with previous text
+        let currentLength = draftText.count
+        let previousLength = previousDraftText.count
+        
+        // Check if text was deleted from the end (backspace)
+        if currentLength < previousLength && 
+           draftText == String(previousDraftText.prefix(currentLength)) {
+            // Deletion occurred at the end - likely backspaces
+            backspaceCount += 1
+        } else {
+            // Text was modified in a non-backspace way, reset counter
+            backspaceCount = 0
+        }
+        
+        // If backspace threshold reached, trigger correction detection
+        if backspaceCount >= 3, correctionState == nil, !draftText.isEmpty {
+            detectCorrection()
+        }
+        
+        // Update previous text for next comparison
+        previousDraftText = draftText
+        
         // Unlock the suggestion when user types, allowing fresh predictions
         suggestionLocked = false
         pushEditorState()
@@ -274,7 +345,53 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
     func acceptSuggestion() -> String {
         guard !suggestion.isEmpty else { return "" }
         
-        // Split the suggestion into first word and the rest
+        // Detect if the user is mid-word (no trailing whitespace)
+        let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isMidWord: Bool
+        if let last = trimmed.unicodeScalars.last {
+            let terminators = CharacterSet.whitespacesAndNewlines.union(CharacterSet.punctuationCharacters)
+            isMidWord = !terminators.contains(last)
+        } else {
+            isMidWord = false
+        }
+        
+        if isMidWord {
+            // Mid-word completion: accept only the first word of the suggestion
+            // to complete the current word, not multiple words ahead
+            let components = suggestion.components(separatedBy: .whitespaces)
+            let firstWord = components.first ?? ""
+            let remaining = components.count > 1 ? components.dropFirst().joined(separator: " ") : ""
+            
+            guard !firstWord.isEmpty else {
+                return ""
+            }
+            
+            let accepted = firstWord
+            
+            // Append only the first word to complete the current word
+            draftText.append(accepted)
+            
+            // Update suggestion to the remaining text (what's left after accepting first word)
+            suggestion = remaining
+            lastDisplayedSuggestion = suggestion
+            suggestionLocked = true
+            
+            recordPrediction(
+                context: String(draftText.dropLast(accepted.count)), // text before the accepted word
+                continuation: accepted,
+                ttft: nil,
+                totalTime: 0,
+                mode: currentPredictionMode,
+                resolution: .accepted
+            )
+            
+            // Push the new state so the engine can start predicting from the updated text
+            pushEditorState()
+            
+            return accepted
+        }
+        
+        // Normal (end-of-word) acceptance: append only the first word
         let components = suggestion.components(separatedBy: .whitespaces)
         let firstWord = components.first ?? ""
         let remaining = components.count > 1 ? components.dropFirst().joined(separator: " ") : ""
@@ -300,7 +417,6 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         suggestionLocked = true
         
         // Record this prediction as accepted for history tracking.
-        // currentPredictionMode is now properly set by the scheduler's onModeChange callback.
         recordPrediction(
             context: String(draftText.dropLast(accepted.count + 1)), // text before the accepted word
             continuation: accepted,
@@ -319,6 +435,60 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         pushEditorState()
         
         return accepted
+    }
+
+    /// Detect and handle correction suggestion when user backspaces through a word.
+    /// This creates a visual strikethrough on the incorrect word and shows the correction in green.
+    private func detectCorrection() {
+        // Find the word that was being typed before backspaces
+        // We look at textBeforeBackspace and find the last word that was partially deleted
+        let fullTextBeforeBackspace = textBeforeBackspace
+        let currentLength = draftText.count
+        
+        // The deleted portion is the suffix of fullTextBeforeBackspace
+        let deletedSuffix = fullTextBeforeBackspace.dropFirst(currentLength)
+        
+        // If the deleted text is just whitespace or empty, no correction needed
+        let trimmedDeleted = deletedSuffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDeleted.isEmpty else {
+            backspaceCount = 0
+            return
+        }
+        
+        // Find the start of the last word in the remaining text that aligns with the deleted suffix
+        // We need to find where the last word begins in fullTextBeforeBackspace
+        let remainingText = String(fullTextBeforeBackspace.prefix(currentLength))
+        
+        // Get the last word from the remaining text (if any)
+        let words = remainingText.split(separator: " ", omittingEmptySubsequences: false)
+        guard let lastWord = words.last, !lastWord.isEmpty else {
+            backspaceCount = 0
+            return
+        }
+        
+        // The incorrect word is the lastWord plus the deleted suffix (they should form a continuous word)
+        // Actually, the incorrect word is the full word that was partially deleted.
+        // We need to reconstruct the full word from what remains and what was deleted.
+        let fullIncorrectWord = lastWord + deletedSuffix
+        
+        // For now, this is a placeholder. In a real implementation, we would:
+        // 1. Run a quick prediction with the context up to this word to get the correction
+        // 2. Or use a spelling dictionary to suggest corrections
+        
+        // For demonstration, we'll just use the fullIncorrectWord as both incorrect and suggested (no change)
+        // In production, we'd get a proper suggestion from the model.
+        let range = NSRange(location: remainingText.count - lastWord.count, length: fullIncorrectWord.count)
+        
+        let correction = CorrectionState(
+            incorrectWord: String(fullIncorrectWord),
+            suggestedCorrection: String(fullIncorrectWord), // Placeholder - should be actual correction
+            range: range,
+            timestamp: Date()
+        )
+        
+        correctionState = correction
+        // Update suggestion to show the correction (with strikethrough in UI)
+        suggestion = String(fullIncorrectWord)
     }
 
     private func pushEditorState() {
@@ -358,6 +528,8 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         repeatPenalty = base.repeatPenalty
         presencePenalty = base.presencePenalty
         confidenceThreshold = base.confidenceThreshold
+        midTypeWords = 0
+        pauseWords = 0
         updateTunedModel()
     }
 
@@ -468,24 +640,60 @@ init(appState: AppState, engine: PredictionEngine? = nil) {
         return suggestion
     }
 
-    // MARK: — Settings Persistence
+    // MARK: — Settings Persistence (Consolidated via AppSettings)
 
-    private func saveSettings() {
-        UserDefaults.standard.set(excludedBundleIDs, forKey: "excludedBundleIDs")
-        UserDefaults.standard.set(manualOnlyBundleIDs, forKey: "manualOnlyBundleIDs")
+    /// Populates all `@Published` properties from the consolidated `settingsStore`.
+    private func loadSettings() {
+        // App gating
+        excludedBundleIDs = settingsStore.appGating.excludedBundleIDs
+        manualOnlyBundleIDs = settingsStore.appGating.manualOnlyBundleIDs
+
+        // Inference
+        temperature = settingsStore.inference.temperature
+        topP = settingsStore.inference.topP
+        repeatPenalty = settingsStore.inference.repeatPenalty
+        presencePenalty = settingsStore.inference.presencePenalty
+        confidenceThreshold = settingsStore.inference.confidenceThreshold
+
+        // Tuning
+        verbosityBias = settingsStore.tuning.verbosityBias
+        continuationBias = settingsStore.tuning.continuationBias
+        instructionStrictness = settingsStore.tuning.instructionStrictness
+        tuningMaxWords = settingsStore.tuning.tuningMaxWords
+        midTypeWords = settingsStore.tuning.midTypeWords
+        pauseWords = settingsStore.tuning.pauseWords
+
+        // Prompts
+        customSystemPrompt = settingsStore.prompt.customSystemPrompt.isEmpty
+            ? PromptBuilder.defaultSystemPrompt
+            : settingsStore.prompt.customSystemPrompt
+        styleNudge = settingsStore.prompt.styleNudge
+        log.info("Settings loaded from consolidated store")
     }
 
-    private func loadSettings() {
-        if let saved = UserDefaults.standard.array(forKey: "excludedBundleIDs") as? [String] {
-            excludedBundleIDs = saved
-        } else {
-            excludedBundleIDs = AccessibilityManager.defaultExcludedBundleIDs
-        }
-        if let saved = UserDefaults.standard.array(forKey: "manualOnlyBundleIDs") as? [String] {
-            manualOnlyBundleIDs = saved
-        } else {
-            manualOnlyBundleIDs = AccessibilityManager.defaultManualOnlyBundleIDs
-        }
+    /// Saves all current `@Published` property values into `settingsStore` and persists to disk.
+    private func saveSettings() {
+        settingsStore.appGating.excludedBundleIDs = excludedBundleIDs
+        settingsStore.appGating.manualOnlyBundleIDs = manualOnlyBundleIDs
+
+        settingsStore.inference.temperature = temperature
+        settingsStore.inference.topP = topP
+        settingsStore.inference.repeatPenalty = repeatPenalty
+        settingsStore.inference.presencePenalty = presencePenalty
+        settingsStore.inference.confidenceThreshold = confidenceThreshold
+
+        settingsStore.tuning.verbosityBias = verbosityBias
+        settingsStore.tuning.continuationBias = continuationBias
+        settingsStore.tuning.instructionStrictness = instructionStrictness
+        settingsStore.tuning.tuningMaxWords = tuningMaxWords
+        settingsStore.tuning.midTypeWords = midTypeWords
+        settingsStore.tuning.pauseWords = pauseWords
+
+        settingsStore.prompt.customSystemPrompt = customSystemPrompt == PromptBuilder.defaultSystemPrompt
+            ? "" : customSystemPrompt
+        settingsStore.prompt.styleNudge = styleNudge
+
+        settingsStore.save()
     }
 }
 

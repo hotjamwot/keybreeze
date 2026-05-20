@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Shared app state (model selection, backend, Ollama catalog / GGUF catalog). Owned at app root; not persisted yet.
+/// Shared app state (model selection, backend, model catalogs). Owned at app root; not persisted yet.
 @MainActor
 final class AppState: ObservableObject {
     @Published var selectedModel: ModelOption
@@ -9,6 +9,7 @@ final class AppState: ObservableObject {
     @Published var selectedBackend: LLMBackend = .ollama {
         didSet {
             guard oldValue != selectedBackend else { return }
+            config.backend = selectedBackend
             handleBackendChange(from: oldValue, to: selectedBackend)
         }
     }
@@ -16,26 +17,40 @@ final class AppState: ObservableObject {
     @Published private(set) var availableModels: [ModelOption] = []
     /// Empty when healthy; otherwise a short user-visible hint (connection errors, empty catalog).
     @Published var modelCatalogStatus: String = ""
-    /// The llama.cpp process manager (starts/stops `llama-server`).
-    @Published private(set) var llamaCppProcessManager: LlamaCppProcessManager
 
-    let ollamaConfiguration: OllamaConfiguration
-    let llamaCppConfiguration: LlamaCppConfiguration
+    /// Flat shared backend configuration (backed by the UI-visible `selectedBackend`).
+    var config: LLMConfig {
+        didSet {
+            // Keep the enum in sync with the config for consumers that observe it.
+            if config.backend != selectedBackend {
+                selectedBackend = config.backend
+            }
+        }
+    }
+
+    /// The llama.cpp server state, observed for readiness gating.
+    @Published var llamaCppServerState: LlamaCppService.ServerState = .stopped
+
     private let urlSession: URLSession
+
+    /// Retained reference to the llama.cpp service so it can manage the server process
+    /// across engine rebuilds. `nil` when the active backend is Ollama.
+    private var activeLlamaCppService: LlamaCppService?
 
     init(
         selectedModel: ModelOption? = nil,
-        selectedBackend: LLMBackend = .ollama,
-        ollamaConfiguration: OllamaConfiguration = OllamaConfiguration(),
-        llamaCppConfiguration: LlamaCppConfiguration = LlamaCppConfiguration(),
+        config: LLMConfig = LLMConfig(),
         urlSession: URLSession = .shared
     ) {
-        self.ollamaConfiguration = ollamaConfiguration
-        self.llamaCppConfiguration = llamaCppConfiguration
+        self.config = config
         self.urlSession = urlSession
         self.selectedModel = selectedModel ?? ModelRegistry.defaultModel
-        self.selectedBackend = selectedBackend
-        self.llamaCppProcessManager = LlamaCppProcessManager(configuration: llamaCppConfiguration)
+        self.selectedBackend = config.backend
+
+        // If the initial backend is llama.cpp, wire up process management.
+        if config.backend == .llamaCpp {
+            setUpLlamaCppService()
+        }
     }
 
     /// Refresh the model list for whatever backend is currently selected.
@@ -52,11 +67,10 @@ final class AppState: ObservableObject {
     func refreshAvailableModelsFromOllama() async {
         modelCatalogStatus = "Loading models…"
         do {
-            let tags = try await OllamaModelCatalog.fetchInstalledTags(
-                configuration: ollamaConfiguration,
+            let options = try await OllamaLLMService.fetchModelOptions(
+                baseURL: config.ollamaBaseURL,
                 urlSession: urlSession
             )
-            let options = tags.map { ModelRegistry.option(resolvingOllamaTag: $0) }
             availableModels = options
 
             guard !options.isEmpty else {
@@ -80,10 +94,10 @@ final class AppState: ObservableObject {
 
     /// Scans the GGUF directory for available models.
     func refreshLlamaCppModels() {
-        let gguflist = LlamaCppModelCatalog.scanDirectory(llamaCppConfiguration.modelsDirectory)
+        let gguflist = LlamaCppService.scanModels(directory: config.llamaCppModelsDirectory)
 
         guard !gguflist.isEmpty else {
-            modelCatalogStatus = "No GGUF files found in \(llamaCppConfiguration.modelsDirectory)"
+            modelCatalogStatus = "No GGUF files found in \(config.llamaCppModelsDirectory)"
             availableModels = []
             return
         }
@@ -92,7 +106,7 @@ final class AppState: ObservableObject {
             ModelOption(
                 id: gguf.id,
                 displayName: gguf.displayName,
-                ollamaId: gguf.displayName, // Use display name for GGUF models so logs and prediction records have a meaningful identifier
+                ollamaId: gguf.displayName,
                 ggufPath: gguf.id,
                 maxWords: 12,
                 verbosityBias: 0.35,
@@ -107,7 +121,6 @@ final class AppState: ObservableObject {
         }
         availableModels = options
 
-        // Pick the first model by default, or keep current selection if still available.
         if let current = options.first(where: { $0.id == selectedModel.id }) {
             selectedModel = current
         } else {
@@ -120,9 +133,31 @@ final class AppState: ObservableObject {
         if selectedBackend == .ollama {
             return !availableModels.isEmpty
         } else {
-            // llama.cpp requires the server to be running
-            return !availableModels.isEmpty && llamaCppProcessManager.state.isRunning
+            return !availableModels.isEmpty && llamaCppServerState.isRunning
         }
+    }
+
+    /// Builds an `LLMConfig` reflecting the current settings. Convenience for engine creation.
+    var effectiveConfig: LLMConfig {
+        var c = config
+        c.backend = selectedBackend
+        return c
+    }
+
+    /// Creates a fresh `PredictionEngine` for the current backend.
+    func makeEngine() -> PredictionEngine {
+        PredictionEngine(config: effectiveConfig)
+    }
+
+    // MARK: - Private
+
+    private func setUpLlamaCppService() {
+        let service = LlamaCppService(config: config, urlSession: urlSession)
+        service.onStateChange { [weak self] state in
+            self?.llamaCppServerState = state
+        }
+        activeLlamaCppService = service
+        llamaCppServerState = service.serverState
     }
 
     /// Called when the user switches backends. Updates the model list and manages llama-server lifecycle.
@@ -130,18 +165,21 @@ final class AppState: ObservableObject {
         Task {
             switch new {
             case .ollama:
-                // If switching away from llama.cpp, stop the server
-                llamaCppProcessManager.stop()
+                // Stop the llama.cpp server if it was running
+                activeLlamaCppService?.stopServer()
+                activeLlamaCppService = nil
                 // Refresh Ollama model list
                 availableModels = []
                 await refreshAvailableModelsFromOllama()
             case .llamaCpp:
+                // Wire up process management
+                setUpLlamaCppService()
                 // Scan GGUF directory
                 refreshLlamaCppModels()
                 // Auto-launch the server with the selected model if it's a GGUF
                 if selectedModel.isGGUF, let path = selectedModel.ggufPath {
                     do {
-                        try await llamaCppProcessManager.start(modelPath: path)
+                        try await activeLlamaCppService?.startServer(modelPath: path)
                     } catch {
                         modelCatalogStatus = "Failed to start llama-server: \(error.localizedDescription)"
                     }
@@ -149,20 +187,9 @@ final class AppState: ObservableObject {
             }
         }
     }
-}
 
-// MARK: - LlamaCppProcessManager.State helpers
-
-extension LlamaCppProcessManager.State {
-    var isRunning: Bool {
-        if case .running = self { return true }
-        return false
-    }
-
-    var isStartingOrRunning: Bool {
-        switch self {
-        case .running, .starting: return true
-        case .stopped, .failed: return false
-        }
+    /// Explicitly stop any running llama.cpp server (e.g. on app quit).
+    func stopLlamaCppServer() {
+        activeLlamaCppService?.stopServer()
     }
 }

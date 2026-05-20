@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import OSLog
 
 struct MenuBarContentView: View {
@@ -69,19 +70,6 @@ struct MenuBarContentView: View {
                             if predictionSession.tuningEnabled {
                                 predictionSession.syncTuningFromModel()
                             }
-
-                            // If using llama.cpp and model changed, restart server
-                            if appState.selectedBackend == .llamaCpp, newModel.isGGUF, let path = newModel.ggufPath {
-                                Task {
-                                    do {
-                                        appState.modelCatalogStatus = "Loading model…"
-                                        try await appState.llamaCppProcessManager.restart(modelPath: path)
-                                        appState.modelCatalogStatus = ""
-                                    } catch {
-                                        appState.modelCatalogStatus = "Failed to load model: \(error.localizedDescription)"
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -141,8 +129,17 @@ struct MenuBarContentView: View {
             }
         }
         .padding()
-        .frame(minWidth: 680, minHeight: 600)
+        .frame(minWidth: 720, minHeight: 680)
+        .fixedSize(horizontal: false, vertical: false)        // Tell MenuBarExtra the content's true intrinsic size
         .task {
+            let win = NSApp.keyWindow ?? NSApp.mainWindow
+            if let win, let screen = win.screen ?? NSScreen.main, win.frame.origin == .zero {
+                let frame = win.frame
+                win.setFrameOrigin(.init(
+                    x: screen.frame.midX - frame.width / 2,
+                    y: screen.frame.midY - frame.height / 2,
+                ))
+            }
             await appState.refreshAvailableModels()
         }
     }
@@ -150,20 +147,20 @@ struct MenuBarContentView: View {
     // MARK: — llama-server status helpers
 
     private var serverStateColor: Color {
-        switch appState.llamaCppProcessManager.state {
-        case .stopped:        return .gray
-        case .starting:       return .orange
-        case .running:        return .green
-        case .failed:         return .red
+        switch appState.llamaCppServerState {
+        case .stopped:   return .gray
+        case .starting:  return .orange
+        case .running:   return .green
+        case .failed:    return .red
         }
     }
 
     private var serverStateText: String {
-        switch appState.llamaCppProcessManager.state {
-        case .stopped:        return "llama-server: stopped"
-        case .starting:       return "llama-server: starting…"
-        case .running:        return "llama-server: running"
-        case .failed(let e):  return "llama-server: failed – \(e)"
+        switch appState.llamaCppServerState {
+        case .stopped:   return "llama-server: stopped"
+        case .starting:  return "llama-server: starting…"
+        case .running:   return "llama-server: running"
+        case .failed(let e): return "llama-server: failed – \(e)"
         }
     }
 

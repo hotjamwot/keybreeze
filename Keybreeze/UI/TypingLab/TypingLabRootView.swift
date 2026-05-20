@@ -15,6 +15,7 @@ struct TypingLabRootView: View {
     @State private var showShadowMode = false
     @State private var shadowOverlapCount: Int = 0
     @State private var shadowOverlapWords: Int = 0
+    @State private var showAdvancedSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -54,7 +55,9 @@ struct TypingLabRootView: View {
                         presetSection
 
                         if showParameters {
-                            ParameterControlsView()
+                            ParameterControlsView(showAdvancedSettings: $showAdvancedSettings)
+                                .environmentObject(appState)
+                                .environmentObject(predictionSession)
                         }
 
                         if showPromptEditor {
@@ -66,7 +69,11 @@ struct TypingLabRootView: View {
 
                     case .diagnostics:
                         DiagnosticsPanelView()
-                        ParameterControlsView()
+                            .environmentObject(appState)
+                            .environmentObject(predictionSession)
+                        ParameterControlsView(showAdvancedSettings: .constant(false))
+                            .environmentObject(appState)
+                            .environmentObject(predictionSession)
 
                     case .history:
                         PredictionHistoryView()
@@ -90,6 +97,16 @@ struct TypingLabRootView: View {
 
                 Spacer()
 
+                // Show latency if available
+                if let latency = predictionSession.currentLatency {
+                    Text(String(format: "%.1fms", latency * 1000))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1), in: Capsule())
+                }
+
                 // Toggle visibility of sections
                 if selectedTab == .playground {
                     Toggle("Diag", isOn: $showDiagnostics)
@@ -104,6 +121,13 @@ struct TypingLabRootView: View {
                 }
             }
             .padding(.top, 6)
+
+            // Advanced settings toggle
+            if selectedTab == .playground {
+                Toggle("Show Advanced", isOn: $showAdvancedSettings)
+                    .toggleStyle(.button)
+                    .font(.caption)
+            }
         }
     }
 
@@ -121,34 +145,16 @@ struct TypingLabRootView: View {
                 .lineLimit(3...10)
                 .frame(maxWidth: .infinity)
                 .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
-                        .fill(.background)
-                )
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(.background)
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+        )
                 .disabled(!predictionSession.isSchedulerActive)
                 .onChange(of: predictionSession.draftText) { _, _ in
                     predictionSession.draftTextChanged()
                 }
-                .overlay(alignment: .topLeading) {
-                    if predictionSession.isSchedulerActive,
-                       !predictionSession.suggestion.isEmpty {
-                        (Text(predictionSession.draftText).foregroundColor(.clear)
-                         + Text(predictionSession.suggestion).foregroundColor(.secondary.opacity(0.35)))
-                            .font(.body)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .onKeyPress(.tab) {
-                    if predictionSession.isSchedulerActive && !predictionSession.suggestion.isEmpty {
-                        Task { await predictionSession.acceptSuggestion() }
-                        return .handled
-                    }
-                    return .ignored
-                }
+                .ghostText(draftText: $predictionSession.draftText, suggestion: $predictionSession.suggestion, correctionState: $predictionSession.correctionState, isSchedulerActive: $predictionSession.isSchedulerActive)
 
             // Mode indicator
             if !predictionSession.currentPredictionMode.isEmpty {
