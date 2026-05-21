@@ -4,7 +4,7 @@ import SwiftUI
 /// for iterating on typing feel, diagnostics, and model tuning.
 struct TypingLabRootView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     @State private var selectedTab: TypingLabTab = .playground
     @State private var showPlayground = true
@@ -24,7 +24,7 @@ struct TypingLabRootView: View {
                 Text("Typing Lab")
                     .font(.headline)
                 Spacer()
-                if predictionSession.isSchedulerActive {
+                if sessionVM.isSchedulerActive {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 8, height: 8)
@@ -50,6 +50,8 @@ struct TypingLabRootView: View {
 
                         if showDiagnostics {
                             DiagnosticsPanelView()
+                                .environmentObject(appState)
+                                .environmentObject(sessionVM)
                         }
 
                         presetSection
@@ -57,26 +59,32 @@ struct TypingLabRootView: View {
                         if showParameters {
                             ParameterControlsView(showAdvancedSettings: $showAdvancedSettings)
                                 .environmentObject(appState)
-                                .environmentObject(predictionSession)
+                                .environmentObject(sessionVM)
                         }
 
                         if showPromptEditor {
                             PromptEditorView()
+                                .environmentObject(appState)
+                                .environmentObject(sessionVM)
                         }
 
                     case .apps:
                         AppGatingPanelView()
+                            .environmentObject(appState)
+                            .environmentObject(sessionVM)
 
                     case .diagnostics:
                         DiagnosticsPanelView()
                             .environmentObject(appState)
-                            .environmentObject(predictionSession)
+                            .environmentObject(sessionVM)
                         ParameterControlsView(showAdvancedSettings: .constant(false))
                             .environmentObject(appState)
-                            .environmentObject(predictionSession)
+                            .environmentObject(sessionVM)
 
                     case .history:
                         PredictionHistoryView()
+                            .environmentObject(appState)
+                            .environmentObject(sessionVM)
                     }
                 }
                 .padding(.vertical, 4)
@@ -86,19 +94,19 @@ struct TypingLabRootView: View {
 
             // Footer controls
             HStack(spacing: 12) {
-                Toggle("Active", isOn: $predictionSession.isSchedulerActive)
+                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .disabled(!appState.canRunPrediction)
 
-                Text(predictionSession.statusMessage)
+                Text(sessionVM.statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 // Show latency if available
-                if let latency = predictionSession.currentLatency {
+                if let latency = sessionVM.currentLatency {
                     Text(String(format: "%.1fms", latency * 1000))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -139,30 +147,30 @@ struct TypingLabRootView: View {
                 .font(.subheadline.weight(.semibold))
 
             // Multi-line editor with ghost overlay
-            TextField("Start typing…", text: $predictionSession.draftText, axis: .vertical)
+            TextField("Start typing…", text: $sessionVM.draftText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(3...10)
                 .frame(maxWidth: .infinity)
                 .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.background)
-                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-        )
-                .disabled(!predictionSession.isSchedulerActive)
-                .onChange(of: predictionSession.draftText) { _, _ in
-                    predictionSession.draftTextChanged()
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.background)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                )
+                .disabled(!sessionVM.isSchedulerActive)
+                .onChange(of: sessionVM.draftText) { _, _ in
+                    sessionVM.draftTextChanged()
                 }
-                .ghostText(draftText: $predictionSession.draftText, suggestion: $predictionSession.suggestion, correctionState: $predictionSession.correctionState, isSchedulerActive: $predictionSession.isSchedulerActive)
+                .ghostText(draftText: $sessionVM.draftText, suggestion: $sessionVM.suggestion, correctionState: $sessionVM.correctionState, isSchedulerActive: $sessionVM.isSchedulerActive)
 
             // Mode indicator
-            if !predictionSession.currentPredictionMode.isEmpty {
+            if !sessionVM.currentPredictionMode.isEmpty {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(predictionSession.isPredicting ? Color.orange : Color.green)
+                        .fill(sessionVM.isPredicting ? Color.orange : Color.green)
                         .frame(width: 6, height: 6)
-                    Text(predictionSession.currentPredictionMode)
+                    Text(sessionVM.currentPredictionMode)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 6)
@@ -172,12 +180,12 @@ struct TypingLabRootView: View {
             }
 
             // Suggestion preview
-            if predictionSession.isSchedulerActive && !predictionSession.suggestion.isEmpty {
+            if sessionVM.isSchedulerActive && !sessionVM.suggestion.isEmpty {
                 HStack(spacing: 0) {
                     Text("→ ")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                    Text(predictionSession.suggestion)
+                    Text(sessionVM.suggestion)
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -201,7 +209,7 @@ struct TypingLabRootView: View {
             Text("Behaviour Preset")
                 .font(.subheadline.weight(.semibold))
 
-            Picker("Preset", selection: $predictionSession.aggressionPreset) {
+            Picker("Preset", selection: $sessionVM.aggressionPreset) {
                 ForEach(AggressionPreset.allCases, id: \.self) { preset in
                     Text(preset.rawValue).tag(preset)
                 }

@@ -1,252 +1,211 @@
 import SwiftUI
-import AppKit
-import OSLog
 
+/// Menu bar dropdown content — provides quick access to controls
+/// and an "Open Typing Lab" action that opens the full typing lab window.
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
-
-    @State private var showTypingLab = true
-    private let log = Logger(subsystem: "app.keybreeze", category: "menu-bar")
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
                 Text("Keybreeze")
                     .font(.headline)
-
                 Spacer()
-
-                // Engine status indicator
-                if predictionSession.isSchedulerActive {
+                if sessionVM.isPredicting {
                     Circle()
-                        .fill(predictionSession.isPredicting ? Color.orange : Color.green)
+                        .fill(Color.orange)
+                        .frame(width: 8, height: 8)
+                }
+                if sessionVM.isSchedulerActive {
+                    Circle()
+                        .fill(Color.green)
                         .frame(width: 8, height: 8)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            // Open Typing Lab
+            Button {
+                openTypingLab()
+            } label: {
+                Label("Open Typing Lab…", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Divider()
 
             // Backend selector
-            HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Backend")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+
                 Picker("Backend", selection: $appState.selectedBackend) {
                     ForEach(LLMBackend.allCases) { backend in
                         Text(backend.displayName).tag(backend)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
-                .onChange(of: appState.selectedBackend) { _, newBackend in
-                    log.info("Switched to backend: \(newBackend.rawValue)")
-                }
+                .labelsHidden()
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
 
-                Spacer()
-            }
-
-            // Model selector row
-            HStack {
-                Group {
-                    if appState.availableModels.isEmpty {
-                        Text("No models loaded yet")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Picker("Model", selection: $appState.selectedModel) {
-                            ForEach(appState.availableModels) { option in
-                                HStack {
-                                    if option.isGGUF {
-                                        Image(systemName: "doc")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(option.displayName)
-                                }
-                                .tag(option)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .onChange(of: appState.selectedModel) { _, newModel in
-                            let id = newModel.ollamaId.isEmpty ? newModel.ggufPath ?? "" : newModel.ollamaId
-                            log.info("Selected model: \(id) (\(newModel.displayName))")
-                            if predictionSession.tuningEnabled {
-                                predictionSession.syncTuningFromModel()
-                            }
-                        }
-                    }
-                }
-
-                Button("Refresh") {
-                    Task { await appState.refreshAvailableModels() }
-                }
-                .disabled(predictionSession.isPredicting)
-            }
-
-            // llama-server status (only visible when on llama.cpp backend)
-            if appState.selectedBackend == .llamaCpp {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(serverStateColor)
-                        .frame(width: 8, height: 8)
-                    Text(serverStateText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // Catalog status (connection errors, empty list)
-            if !appState.modelCatalogStatus.isEmpty {
-                Text(appState.modelCatalogStatus)
+                // Model selector
+                Text("Model")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+
+                if appState.availableModels.isEmpty {
+                    Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 12)
+                } else {
+                    Picker("Model", selection: $appState.selectedModel) {
+                        ForEach(appState.availableModels) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .padding(.horizontal, 12)
+                }
+            }
+            .padding(.vertical, 6)
+
+            // Status message
+            if !appState.modelCatalogStatus.isEmpty {
+                Text(appState.modelCatalogStatus)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
             }
 
             Divider()
 
-            // Mode toggle: Typing Lab vs compact mode
+            // Active toggle
             HStack {
-                Text("Typing Lab")
-                    .font(.subheadline.weight(.semibold))
-
+                Text("Active")
+                    .font(.body)
                 Spacer()
-
-                Toggle("Active", isOn: $predictionSession.isSchedulerActive)
+                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .disabled(!appState.canRunPrediction)
-
-                Toggle("Expand", isOn: $showTypingLab)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
 
-            if showTypingLab {
-                TypingLabRootView()
-                    .environmentObject(appState)
-                    .environmentObject(predictionSession)
-            } else {
-                // Compact mode: just the playground
-                compactPlayground
+            // Status
+            HStack(spacing: 6) {
+                if sessionVM.isPredicting {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                }
+                Text(sessionVM.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+
+            Divider()
+
+            // Quit
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Label("Quit Keybreeze", systemImage: "power")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
-        .padding()
-        .frame(minWidth: 720, minHeight: 680)
-        .fixedSize(horizontal: false, vertical: false)        // Tell MenuBarExtra the content's true intrinsic size
+        .frame(width: 280)
         .task {
-            let win = NSApp.keyWindow ?? NSApp.mainWindow
-            if let win, let screen = win.screen ?? NSScreen.main, win.frame.origin == .zero {
-                let frame = win.frame
-                win.setFrameOrigin(.init(
-                    x: screen.frame.midX - frame.width / 2,
-                    y: screen.frame.midY - frame.height / 2,
-                ))
-            }
-            await appState.refreshAvailableModels()
+            appState.refreshModels()
         }
     }
 
-    // MARK: — llama-server status helpers
+    private func openTypingLab() {
+        // Store references to shared state before opening window
+        TypingLabWindowController.sharedAppState = appState
+        TypingLabWindowController.sharedSessionVM = sessionVM
+        TypingLabWindowController.openWindow()
+    }
+}
 
-    private var serverStateColor: Color {
-        switch appState.llamaCppServerState {
-        case .stopped:   return .gray
-        case .starting:  return .orange
-        case .running:   return .green
-        case .failed:    return .red
-        }
+// MARK: - Typing Lab Window Controller
+
+/// Manages opening the Typing Lab in a separate, standalone window.
+final class TypingLabWindowController: NSObject, NSWindowDelegate {
+    private static let shared = TypingLabWindowController()
+    private var window: NSWindow?
+
+    /// Shared state from the menu bar — set before calling `openWindow()`.
+    static var sharedAppState: AppState?
+    static var sharedSessionVM: SessionViewModel?
+
+    static func openWindow() {
+        shared.open()
     }
 
-    private var serverStateText: String {
-        switch appState.llamaCppServerState {
-        case .stopped:   return "llama-server: stopped"
-        case .starting:  return "llama-server: starting…"
-        case .running:   return "llama-server: running"
-        case .failed(let e): return "llama-server: failed – \(e)"
+    private func open() {
+        // If window already exists and is visible, bring it to front
+        if let existingWindow = window, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            return
         }
+
+        guard let appState = Self.sharedAppState,
+              let sessionVM = Self.sharedSessionVM else {
+            return
+        }
+
+        let width: CGFloat = 720
+        let height: CGFloat = 640
+
+        guard let screen = NSScreen.main else { return }
+        let screenFrame = screen.visibleFrame
+        let x = screenFrame.origin.x + (screenFrame.width - width) / 2
+        let y = screenFrame.origin.y + (screenFrame.height - height) / 2
+
+        let hostingView = NSHostingView(
+            rootView: TypingLabRootView()
+                .environmentObject(appState)
+                .environmentObject(sessionVM)
+        )
+
+        let newWindow = NSWindow(
+            contentRect: NSRect(x: x, y: y, width: width, height: height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        newWindow.title = "Keybreeze — Typing Lab"
+        newWindow.contentView = hostingView
+        newWindow.delegate = self
+        newWindow.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        self.window = newWindow
     }
 
-    // MARK: — Compact playground (when Typing Lab is collapsed)
-
-    private var compactPlayground: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // TextField with ghost overlay
-            TextField("Type here…", text: $predictionSession.draftText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(4 ... 8)
-                .frame(maxWidth: .infinity)
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
-                        .fill(.background)
-                )
-                .disabled(!predictionSession.isSchedulerActive)
-                .onChange(of: predictionSession.draftText) { _, _ in
-                    predictionSession.draftTextChanged()
-                }
-                .overlay(alignment: .topLeading) {
-                    if predictionSession.isSchedulerActive,
-                       !predictionSession.suggestion.isEmpty {
-                        (Text(predictionSession.draftText).foregroundColor(.clear)
-                         + Text(predictionSession.suggestion).foregroundColor(.secondary.opacity(0.35)))
-                            .font(.body)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .onKeyPress(.tab) {
-                    if predictionSession.isSchedulerActive && !predictionSession.suggestion.isEmpty {
-                        predictionSession.acceptSuggestion()
-                        return .handled
-                    }
-                    return .ignored
-                }
-
-            // Status line
-            HStack(spacing: 12) {
-                if predictionSession.isSchedulerActive {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(predictionSession.isPredicting ? Color.orange : Color.green)
-                            .frame(width: 6, height: 6)
-                        Text(predictionSession.statusMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !predictionSession.currentPredictionMode.isEmpty {
-                        Text(predictionSession.currentPredictionMode)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.1), in: Capsule())
-                    }
-
-                    Spacer()
-                } else {
-                    Text(predictionSession.statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // Suggestion text preview
-            if predictionSession.isSchedulerActive && !predictionSession.suggestion.isEmpty {
-                HStack(spacing: 0) {
-                    Text("→ ")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    Text(predictionSession.suggestion)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 2)
-            }
-        }
+    func windowWillClose(_ notification: Notification) {
+        window = nil
     }
 }

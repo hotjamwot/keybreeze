@@ -2,25 +2,31 @@ import SwiftUI
 
 @main
 struct KeybreezeApp: App {
-    @StateObject private var appState: AppState
-    @StateObject private var predictionSession: PredictionSessionViewModel
+    @StateObject private var appState = AppState()
+
+    /// The session VM is lazily created and stored as a strong reference so it outlives
+    /// any single view's lifetime (needed for the separate Typing Lab window).
+    @State private var sessionVM: SessionViewModel?
+
+    private var resolvedSessionVM: SessionViewModel {
+        if let existing = sessionVM {
+            return existing
+        }
+        let vm = SessionViewModel(appState: appState)
+        sessionVM = vm
+        return vm
+    }
 
     init() {
         AppKitLifecycle.configureMenuBarAgentApp()
-        let sharedAppState = AppState(config: LLMConfig())
-        _appState = StateObject(wrappedValue: sharedAppState)
-        _predictionSession = StateObject(wrappedValue: PredictionSessionViewModel(appState: sharedAppState))
     }
 
     var body: some Scene {
         MenuBarExtra("Keybreeze", systemImage: "wind") {
             MenuBarContentView()
                 .environmentObject(appState)
-                .environmentObject(predictionSession)
+                .environmentObject(resolvedSessionVM)
         }
-        .menuBarExtraStyle(.window)
-        .onChange(of: appState.selectedBackend) { _, _ in
-            // Backend changes are handled by AppState.handleBackendChange
-        }
+        .menuBarExtraStyle(.menu)
     }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 /// Scrolling timeline of recent predictions with metadata for identifying failure modes
 /// and evaluating prediction quality.
 struct PredictionHistoryView: View {
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     @State private var selectedResolution: PredictionResolution?
     @State private var searchText: String = ""
@@ -16,13 +16,13 @@ struct PredictionHistoryView: View {
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button("Clear") {
-                    predictionSession.predictionHistory.clear()
+                    sessionVM.predictionHistory.clear()
                 }
                 .font(.caption)
-                .disabled(predictionSession.predictionHistory.allRecords.isEmpty)
+                .disabled(sessionVM.predictionHistory.allRecords.isEmpty)
             }
 
-            let history = predictionSession.predictionHistory
+            let history = sessionVM.predictionHistory
             HStack(spacing: 16) {
                 statBadge(label: "Total", value: "\(history.allRecords.count)")
                 statBadge(label: "Accepted", value: "\(history.count(resolution: .accepted))", color: .green)
@@ -79,7 +79,7 @@ struct PredictionHistoryView: View {
     }
 
     private var filteredRecords: [PredictionRecord] {
-        let records = predictionSession.predictionHistory.allRecords
+        let records = sessionVM.predictionHistory.allRecords
         guard let selectedResolution else { return records }
         return records.filter { $0.resolution == selectedResolution }
     }
@@ -159,4 +159,3 @@ struct PredictionHistoryRow: View {
         String(format: "%.0fms", interval * 1000)
     }
 }
-

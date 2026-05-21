@@ -4,7 +4,7 @@ import SwiftUI
 /// Excluded apps: auto-trigger disabled entirely.
 /// Manual-only apps: auto-trigger disabled, but manual trigger works.
 struct AppGatingPanelView: View {
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -22,7 +22,7 @@ struct AppGatingPanelView: View {
                     .font(.caption.weight(.medium))
 
                 BundleIDListView(
-                    bundleIDs: $predictionSession.excludedBundleIDs,
+                    bundleIDs: $sessionVM.excludedBundleIDs,
                     placeholder: "No excluded apps"
                 )
             }
@@ -32,14 +32,14 @@ struct AppGatingPanelView: View {
                     .font(.caption.weight(.medium))
 
                 BundleIDListView(
-                    bundleIDs: $predictionSession.manualOnlyBundleIDs,
+                    bundleIDs: $sessionVM.manualOnlyBundleIDs,
                     placeholder: "No manual-only apps"
                 )
             }
 
             Button("Reset to Defaults") {
-                predictionSession.excludedBundleIDs = .defaultExcluded
-                predictionSession.manualOnlyBundleIDs = .defaultManualOnly
+                sessionVM.excludedBundleIDs = .defaultExcluded
+                sessionVM.manualOnlyBundleIDs = .defaultManualOnly
             }
             .font(.caption)
         }

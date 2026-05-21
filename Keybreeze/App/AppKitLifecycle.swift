@@ -21,11 +21,7 @@ enum AppKitLifecycle {
                 // and any wrapper shell that launched it.
                 try? await Process.run(
                     URL(fileURLWithPath: "/usr/bin/pkill"),
-                    arguments: ["-9", "-f", "/opt/homebrew/bin/llama-server"]
-                )
-                try? await Process.run(
-                    URL(fileURLWithPath: "/usr/sbin/lsof"),
-                    arguments: ["-ti", "tcp:11345"]
+                    arguments: ["-9", "-f", "llama-server"]
                 )
             }
         }

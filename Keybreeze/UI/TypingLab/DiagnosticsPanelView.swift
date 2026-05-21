@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Live engine diagnostics panel showing real-time metrics about prediction performance.
 struct DiagnosticsPanelView: View {
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     @State private var ttftHistory: [Double] = []
     @State private var totalTimeHistory: [Double] = []
@@ -22,24 +22,24 @@ struct DiagnosticsPanelView: View {
                     showCopySuccess = true
                 }
                 .font(.caption)
-                .disabled(predictionSession.predictionHistory.allRecords.isEmpty)
+                .disabled(sessionVM.predictionHistory.allRecords.isEmpty)
             }
             if showCopySuccess {
                 Text("Log copied to clipboard!").font(.caption2).foregroundColor(.green).padding(.top, 4)
             }
-            let history = predictionSession.predictionHistory
+            let history = sessionVM.predictionHistory
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-diagnosticItem(label: "Backend", value: "\(predictionSession.appState.selectedBackend.displayName)")
-diagnosticItem(label: "Model", value: predictionSession.effectiveModelOption.displayName)
-diagnosticItem(label: "Mode", value: predictionSession.currentPredictionMode.isEmpty ? "—" : predictionSession.currentPredictionMode)
+                diagnosticItem(label: "Backend", value: "\(sessionVM.appState.selectedBackend.displayName)")
+                diagnosticItem(label: "Model", value: sessionVM.effectiveModelOption.displayName)
+                diagnosticItem(label: "Mode", value: sessionVM.currentPredictionMode.isEmpty ? "—" : sessionVM.currentPredictionMode)
                 diagnosticItem(label: "TTFT", value: formattedLatency(history.averageTimeToFirstToken))
                 diagnosticItem(label: "Avg Time", value: formattedLatency(history.averageTotalTime))
                 diagnosticItem(label: "Cancel Count", value: "\(history.count(resolution: .cancelled))")
                 diagnosticItem(label: "Accepted", value: "\(history.count(resolution: .accepted))")
                 diagnosticItem(label: "Ignored", value: "\(history.count(resolution: .ignored))")
                 diagnosticItem(label: "Accept Rate", value: formattedPercent(history.acceptanceRate))
-                diagnosticItem(label: "Context Size", value: "\(predictionSession.draftText.count) chars")
-                diagnosticItem(label: "Prediction", value: "\(WordLimiter.wordCount(in: predictionSession.suggestion)) words")
+                diagnosticItem(label: "Context Size", value: "\(sessionVM.draftText.count) chars")
+                diagnosticItem(label: "Prediction", value: "\(wordCount(in: sessionVM.suggestion)) words")
             }
             .font(.caption.monospacedDigit())
         }
@@ -72,17 +72,18 @@ diagnosticItem(label: "Mode", value: predictionSession.currentPredictionMode.isE
         return String(format: "%.0f%%", value * 100)
     }
 
+    private func wordCount(in text: String) -> Int {
+        return text.split(separator: " ").filter { !$0.isEmpty }.count
+    }
+
     private func exportLogs() -> String {
-        let history = predictionSession.predictionHistory
+        let history = sessionVM.predictionHistory
         var log = "=== Keybreeze Diagnostics ===\n"
         log += "Generated: \(Date())\n"
         log += "\n"
         log += "=== Model Parameters ===\n"
-        let model = predictionSession.effectiveModelOption
+        let model = sessionVM.effectiveModelOption
         log += "Model: \(model.displayName) (\(model.ollamaId))\n"
-        log += "Verbosity Bias: \(model.verbosityBias)\n"
-        log += "Continuation Bias: \(model.continuationBias)\n"
-        log += "Instruction Strictness: \(model.instructionStrictness)\n"
         log += "Temperature: \(model.temperature)\n"
         log += "Top P: \(model.topP)\n"
         log += "Repeat Penalty: \(model.repeatPenalty)\n"
@@ -90,8 +91,8 @@ diagnosticItem(label: "Mode", value: predictionSession.currentPredictionMode.isE
         log += "\n"
         log += "=== Word Caps ===\n"
         log += "Model maxWords: \(model.maxWords)\n"
-        let midType = predictionSession.midTypeWords > 0 ? "\(predictionSession.midTypeWords)" : "default (3)"
-        let pause = predictionSession.pauseWords > 0 ? "\(predictionSession.pauseWords)" : "default (5)"
+        let midType = sessionVM.midTypeWords > 0 ? "\(sessionVM.midTypeWords)" : "default (3)"
+        let pause = sessionVM.pauseWords > 0 ? "\(sessionVM.pauseWords)" : "default (5)"
         log += "Mid-Type cap: \(midType)\n"
         log += "Pause cap: \(pause)\n"
         log += "\n"

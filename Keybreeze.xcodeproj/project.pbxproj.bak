@@ -7,23 +7,41 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6618DA2F2FBF34FE0097FD61 /* PredictionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA2E2FBF34FE0097FD61 /* PredictionHistory.swift */; };
-		6618DA312FBF35090097FD61 /* ModelOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA302FBF35090097FD61 /* ModelOption.swift */; };
-		6618DA332FBF35120097FD61 /* CompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA322FBF35120097FD61 /* CompletionController.swift */; };
-		6618DA352FBF35190097FD61 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA342FBF35190097FD61 /* PromptBuilder.swift */; };
+		665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */; };
+		665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */; };
 		6676777E2FBDC7A400B8DA3A /* InputSourceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */; };
 		667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */; };
+		667677822FBDDFA700B8DA3A /* CorrectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677812FBDDFA700B8DA3A /* CorrectionState.swift */; };
 		667677842FBDE1C700B8DA3A /* GhostTextModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */; };
-		667677942FBE2CCA00B8DA3A /* LLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677932FBE2CCA00B8DA3A /* LLMClient.swift */; };
-		667677962FBE2CDD00B8DA3A /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */; };
-		667677982FBE2D1100B8DA3A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677972FBE2D1100B8DA3A /* AppState.swift */; };
+		667677862FBDE38000B8DA3A /* CorrectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677852FBDE38000B8DA3A /* CorrectionManager.swift */; };
+		6676778B2FBE179A00B8DA3A /* BackendState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677892FBE179A00B8DA3A /* BackendState.swift */; };
+		6676778C2FBE179A00B8DA3A /* AccessibilityContextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677872FBE179A00B8DA3A /* AccessibilityContextReader.swift */; };
+		6676778D2FBE179A00B8DA3A /* AccessibilityInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677882FBE179A00B8DA3A /* AccessibilityInserter.swift */; };
+		6676778E2FBE179A00B8DA3A /* ModelSelectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676778A2FBE179A00B8DA3A /* ModelSelectionState.swift */; };
+		667677912FBE1FBB00B8DA3A /* AccessibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676778F2FBE1FBB00B8DA3A /* AccessibilityController.swift */; };
+		667677922FBE1FBB00B8DA3A /* PredictionLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677902FBE1FBB00B8DA3A /* PredictionLoop.swift */; };
 		A10000000000000000000001 /* KeybreezeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KeybreezeApp.swift */; };
 		A10000000000000000000002 /* AppKitLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppKitLifecycle.swift */; };
+		A10000000000000000000003 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* EditorState.swift */; };
+		A10000000000000000000004 /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* LLMProvider.swift */; };
+		A10000000000000000000006 /* OllamaLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* OllamaLLMService.swift */; };
+		A10000000000000000000007 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* PromptBuilder.swift */; };
 		A10000000000000000000008 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarContentView.swift */; };
+		A10000000000000000000009 /* PredictionTestViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* PredictionTestViewModel.swift */; };
+		A1000000000000000000000A /* WordLimiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* WordLimiter.swift */; };
 		A1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* Assets.xcassets */; };
+		A1000000000000000000000C /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* AppState.swift */; };
+		A1000000000000000000000D /* ModelRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* ModelRegistry.swift */; };
 		A1000000000000000000000E /* KeybreezeLatencyLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* KeybreezeLatencyLogger.swift */; };
+		A10000000000000000000011 /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* ContextBuilder.swift */; };
 		A10000000000000000000012 /* PredictionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* PredictionMode.swift */; };
+		A10000000000000000000013 /* PredictionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PredictionEngine.swift */; };
+		A10000000000000000000014 /* PredictionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* PredictionScheduler.swift */; };
+		A10000000000000000000015 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* Debouncer.swift */; };
+		A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* PredictionSessionViewModel.swift */; };
 		A10000000000000000000017 /* AccessibilityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* AccessibilityManager.swift */; };
+		C10000000000000000000001 /* PredictionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* PredictionHistory.swift */; };
+		C10000000000000000000002 /* ShadowPredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* ShadowPredictor.swift */; };
 		C10000000000000000000011 /* TypingLabRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000011 /* TypingLabRootView.swift */; };
 		C10000000000000000000012 /* DiagnosticsPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000012 /* DiagnosticsPanelView.swift */; };
 		C10000000000000000000013 /* ParameterControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* ParameterControlsView.swift */; };
@@ -33,23 +51,34 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		6618DA2E2FBF34FE0097FD61 /* PredictionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionHistory.swift; sourceTree = "<group>"; };
-		6618DA302FBF35090097FD61 /* ModelOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelOption.swift; sourceTree = "<group>"; };
-		6618DA322FBF35120097FD61 /* CompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionController.swift; sourceTree = "<group>"; };
-		6618DA342FBF35190097FD61 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaCppService.swift; sourceTree = "<group>"; };
+		665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMBackend.swift; sourceTree = "<group>"; };
 		6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSourceMonitor.swift; sourceTree = "<group>"; };
 		6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		667677812FBDDFA700B8DA3A /* CorrectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionState.swift; sourceTree = "<group>"; };
 		667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostTextModifier.swift; sourceTree = "<group>"; };
-		667677932FBE2CCA00B8DA3A /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
-		667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
-		667677972FBE2D1100B8DA3A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		667677852FBDE38000B8DA3A /* CorrectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionManager.swift; sourceTree = "<group>"; };
+		6676778F2FBE1FBB00B8DA3A /* AccessibilityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityController.swift; sourceTree = "<group>"; };
+		667677902FBE1FBB00B8DA3A /* PredictionLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLoop.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* KeybreezeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AppKitLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitLifecycle.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* OllamaLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaLLMService.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* PredictionTestViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionTestViewModel.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* WordLimiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordLimiter.swift; sourceTree = "<group>"; };
 		A2000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000C /* Keybreeze.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Keybreeze.entitlements; sourceTree = "<group>"; };
+		A2000000000000000000000D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* ModelRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRegistry.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* KeybreezeLatencyLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybreezeLatencyLogger.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* PredictionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionMode.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* PredictionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* PredictionSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionSessionViewModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000017 /* AccessibilityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityManager.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* Keybreeze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Keybreeze.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000011 /* TypingLabRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLabRootView.swift; sourceTree = "<group>"; };
@@ -104,7 +133,6 @@
 		A50000000000000000000004 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				667677972FBE2D1100B8DA3A /* AppState.swift */,
 				A20000000000000000000001 /* KeybreezeApp.swift */,
 				A20000000000000000000002 /* AppKitLifecycle.swift */,
 			);
@@ -114,13 +142,19 @@
 		A50000000000000000000005 /* Core */ = {
 			isa = PBXGroup;
 			children = (
-				6618DA322FBF35120097FD61 /* CompletionController.swift */,
-				6618DA302FBF35090097FD61 /* ModelOption.swift */,
-				6618DA2E2FBF34FE0097FD61 /* PredictionHistory.swift */,
+				6676778F2FBE1FBB00B8DA3A /* AccessibilityController.swift */,
+				667677902FBE1FBB00B8DA3A /* PredictionLoop.swift */,
+				667677852FBDE38000B8DA3A /* CorrectionManager.swift */,
+				667677812FBDDFA700B8DA3A /* CorrectionState.swift */,
 				6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */,
 				6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */,
+				A20000000000000000000003 /* EditorState.swift */,
+				A2000000000000000000000D /* AppState.swift */,
+				A2000000000000000000000E /* ModelRegistry.swift */,
 				A20000000000000000000017 /* AccessibilityManager.swift */,
+				A20000000000000000000011 /* ContextBuilder.swift */,
 				A20000000000000000000012 /* PredictionMode.swift */,
+				A20000000000000000000013 /* PredictionEngine.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -128,8 +162,11 @@
 		A50000000000000000000006 /* LLM */ = {
 			isa = PBXGroup;
 			children = (
-				6618DA342FBF35190097FD61 /* PromptBuilder.swift */,
-				667677932FBE2CCA00B8DA3A /* LLMClient.swift */,
+				665610D72FBC5FC900C7B4D3 /* LlamaCppService.swift */,
+				665610D82FBC5FC900C7B4D3 /* LLMBackend.swift */,
+				A20000000000000000000004 /* LLMProvider.swift */,
+				A20000000000000000000006 /* OllamaLLMService.swift */,
+				A20000000000000000000007 /* PromptBuilder.swift */,
 			);
 			path = LLM;
 			sourceTree = "<group>";
@@ -137,9 +174,10 @@
 		A50000000000000000000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */,
 				667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */,
 				A20000000000000000000008 /* MenuBarContentView.swift */,
+				A20000000000000000000009 /* PredictionTestViewModel.swift */,
+				A20000000000000000000016 /* PredictionSessionViewModel.swift */,
 				C50000000000000000000001 /* TypingLab */,
 			);
 			path = UI;
@@ -148,7 +186,9 @@
 		A50000000000000000000008 /* Utils */ = {
 			isa = PBXGroup;
 			children = (
+				A2000000000000000000000A /* WordLimiter.swift */,
 				A2000000000000000000000F /* KeybreezeLatencyLogger.swift */,
+				A20000000000000000000015 /* Debouncer.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -236,26 +276,37 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* KeybreezeApp.swift in Sources */,
-				667677962FBE2CDD00B8DA3A /* SessionViewModel.swift in Sources */,
-				667677982FBE2D1100B8DA3A /* AppState.swift in Sources */,
 				A10000000000000000000002 /* AppKitLifecycle.swift in Sources */,
-				667677942FBE2CCA00B8DA3A /* LLMClient.swift in Sources */,
+				A10000000000000000000003 /* EditorState.swift in Sources */,
+				A1000000000000000000000C /* AppState.swift in Sources */,
+				A1000000000000000000000D /* ModelRegistry.swift in Sources */,
 				667677842FBDE1C700B8DA3A /* GhostTextModifier.swift in Sources */,
-				6618DA2F2FBF34FE0097FD61 /* PredictionHistory.swift in Sources */,
+				665610DB2FBC5FC900C7B4D3 /* LLMBackend.swift in Sources */,
+				665610DD2FBC5FC900C7B4D3 /* LlamaCppService.swift in Sources */,
+				A10000000000000000000004 /* LLMProvider.swift in Sources */,
 				6676777E2FBDC7A400B8DA3A /* InputSourceMonitor.swift in Sources */,
+				667677912FBE1FBB00B8DA3A /* AccessibilityController.swift in Sources */,
+				667677922FBE1FBB00B8DA3A /* PredictionLoop.swift in Sources */,
+				667677822FBDDFA700B8DA3A /* CorrectionState.swift in Sources */,
+				A10000000000000000000006 /* OllamaLLMService.swift in Sources */,
+				A10000000000000000000007 /* PromptBuilder.swift in Sources */,
+				667677862FBDE38000B8DA3A /* CorrectionManager.swift in Sources */,
 				A10000000000000000000008 /* MenuBarContentView.swift in Sources */,
-				6618DA352FBF35190097FD61 /* PromptBuilder.swift in Sources */,
+				A10000000000000000000009 /* PredictionTestViewModel.swift in Sources */,
+				A1000000000000000000000A /* WordLimiter.swift in Sources */,
 				A1000000000000000000000E /* KeybreezeLatencyLogger.swift in Sources */,
+				A10000000000000000000011 /* ContextBuilder.swift in Sources */,
 				A10000000000000000000012 /* PredictionMode.swift in Sources */,
+				A10000000000000000000013 /* PredictionEngine.swift in Sources */,
+				A10000000000000000000015 /* Debouncer.swift in Sources */,
 				A10000000000000000000017 /* AccessibilityManager.swift in Sources */,
-				6618DA332FBF35120097FD61 /* CompletionController.swift in Sources */,
+				A10000000000000000000016 /* PredictionSessionViewModel.swift in Sources */,
 				667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */,
 				C10000000000000000000011 /* TypingLabRootView.swift in Sources */,
 				C10000000000000000000012 /* DiagnosticsPanelView.swift in Sources */,
 				C10000000000000000000013 /* ParameterControlsView.swift in Sources */,
 				C10000000000000000000014 /* PromptEditorView.swift in Sources */,
 				C10000000000000000000015 /* PredictionHistoryView.swift in Sources */,
-				6618DA312FBF35090097FD61 /* ModelOption.swift in Sources */,
 				C10000000000000000000016 /* AppGatingPanelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

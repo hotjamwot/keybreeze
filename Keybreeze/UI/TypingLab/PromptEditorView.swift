@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Runtime prompt editing — modify system and continuation prompts without rebuilding.
 struct PromptEditorView: View {
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
 
     @State private var showSystemPrompt = true
     @State private var showStyleNudge = true
@@ -28,7 +28,7 @@ struct PromptEditorView: View {
                 }
 
                 if showSystemPrompt {
-                    TextEditor(text: $predictionSession.customSystemPrompt)
+                    TextEditor(text: $sessionVM.customSystemPrompt)
                         .font(.caption.monospaced())
                         .frame(minHeight: 60, maxHeight: 120)
                         .padding(6)
@@ -37,7 +37,7 @@ struct PromptEditorView: View {
                                 .stroke(Color.secondary.opacity(0.3))
                         )
                         .overlay(alignment: .topLeading) {
-                            if predictionSession.customSystemPrompt.isEmpty {
+                            if sessionVM.customSystemPrompt.isEmpty {
                                 Text("Leave empty to use default system prompt…")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
@@ -60,7 +60,7 @@ struct PromptEditorView: View {
                 }
 
                 if showStyleNudge {
-                    TextEditor(text: $predictionSession.styleNudge)
+                    TextEditor(text: $sessionVM.styleNudge)
                         .font(.caption.monospaced())
                         .frame(minHeight: 60, maxHeight: 120)
                         .padding(6)
@@ -69,7 +69,7 @@ struct PromptEditorView: View {
                                 .stroke(Color.secondary.opacity(0.3))
                         )
                         .overlay(alignment: .topLeading) {
-                            if predictionSession.styleNudge.isEmpty {
+                            if sessionVM.styleNudge.isEmpty {
                                 Text("Leave empty for default style…")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
@@ -88,8 +88,8 @@ struct PromptEditorView: View {
         .padding(10)
         .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .onAppear {
-            if predictionSession.customSystemPrompt.isEmpty {
-                predictionSession.customSystemPrompt = PromptBuilder.defaultSystemPrompt
+            if sessionVM.customSystemPrompt.isEmpty {
+                sessionVM.customSystemPrompt = PromptBuilder.defaultSystemPrompt
             }
         }
     }

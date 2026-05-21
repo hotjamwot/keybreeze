@@ -1,22 +1,18 @@
 import Foundation
 
-/// Consolidated application settings for PredictionSessionViewModel.
-/// Single `save()` / `load()` contact point with `UserDefaults`.
-/// Organised into nested Codable structs matching the plan's target shape.
+/// Consolidated application settings.
 struct AppSettings: Codable {
     var inference = InferenceSettings()
     var tuning = TuningSettings()
     var appGating = AppGatingSettings()
     var prompt = PromptSettings()
 
-    // MARK: - Nested Settings Groups
-
     struct InferenceSettings: Codable {
-        var temperature: Double = ModelOption.defaultTemperature
-        var topP: Double = ModelOption.defaultTopP
-        var repeatPenalty: Double = ModelOption.defaultRepeatPenalty
-        var presencePenalty: Double = ModelOption.defaultPresencePenalty
-        var confidenceThreshold: Double = ModelOption.defaultConfidenceThreshold
+        var temperature: Double = 0.35
+        var topP: Double = 0.85
+        var repeatPenalty: Double = 1.02
+        var presencePenalty: Double = 0.1
+        var confidenceThreshold: Double = 0.25
     }
 
     struct TuningSettings: Codable {
@@ -29,8 +25,8 @@ struct AppSettings: Codable {
     }
 
     struct AppGatingSettings: Codable {
-        var excludedBundleIDs: [String] = AccessibilityManager.defaultExcludedBundleIDs
-        var manualOnlyBundleIDs: [String] = AccessibilityManager.defaultManualOnlyBundleIDs
+        var excludedBundleIDs: [String] = []
+        var manualOnlyBundleIDs: [String] = []
     }
 
     struct PromptSettings: Codable {
@@ -38,52 +34,20 @@ struct AppSettings: Codable {
         var styleNudge: String = ""
     }
 
-    // MARK: - Persistence
+    // MARK: Persistence
 
     private static let storageKey = "com.keybreeze.appSettings"
 
     func save() {
-        guard let data = try? JSONEncoder().encode(self) else {
-            print("[AppSettings] Failed to encode settings")
-            return
-        }
+        guard let data = try? JSONEncoder().encode(self) else { return }
         UserDefaults.standard.set(data, forKey: Self.storageKey)
     }
 
     static func load() -> AppSettings {
-        // First try to read from the consolidated store
-        if let data = UserDefaults.standard.data(forKey: storageKey),
-           let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
-        {
-            return settings
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+            return AppSettings()
         }
-
-        // No consolidated data — try migrating from legacy flat keys.
-        // If legacy keys exist, migrate and persist the new format.
-        let hasLegacyKeys = UserDefaults.standard.array(forKey: "excludedBundleIDs") != nil
-                         || UserDefaults.standard.array(forKey: "manualOnlyBundleIDs") != nil
-
-        if hasLegacyKeys {
-            var settings = AppSettings()
-
-            if let saved = UserDefaults.standard.array(forKey: "excludedBundleIDs") as? [String] {
-                settings.appGating.excludedBundleIDs = saved
-            }
-            if let saved = UserDefaults.standard.array(forKey: "manualOnlyBundleIDs") as? [String] {
-                settings.appGating.manualOnlyBundleIDs = saved
-            }
-
-            // Remove legacy keys
-            UserDefaults.standard.removeObject(forKey: "excludedBundleIDs")
-            UserDefaults.standard.removeObject(forKey: "manualOnlyBundleIDs")
-
-            // Persist consolidated format immediately
-            settings.save()
-
-            return settings
-        }
-
-        // No legacy data either — return fresh defaults
-        return AppSettings()
+        return settings
     }
 }

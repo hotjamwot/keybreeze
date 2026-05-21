@@ -3,7 +3,7 @@ import SwiftUI
 /// Runtime model parameter controls for rapid experimentation with typing feel.
 /// Grouped into clear sections matching GhostType's clean settings panel approach.
 struct ParameterControlsView: View {
-    @EnvironmentObject private var predictionSession: PredictionSessionViewModel
+    @EnvironmentObject private var sessionVM: SessionViewModel
     @EnvironmentObject private var appState: AppState
 
     @Binding var showAdvancedSettings: Bool
@@ -11,19 +11,19 @@ struct ParameterControlsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Enable tuning toggle
-            Toggle(isOn: $predictionSession.tuningEnabled) {
+            Toggle(isOn: $sessionVM.tuningEnabled) {
                 Label("Override Model Parameters", systemImage: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
             }
             .toggleStyle(.switch)
-            .onChange(of: predictionSession.tuningEnabled) { _, enabled in
+            .onChange(of: sessionVM.tuningEnabled) { _, enabled in
                 if enabled {
-                    predictionSession.syncTuningFromModel()
+                    sessionVM.syncTuningFromModel()
                 }
             }
             .padding(.bottom, 8)
 
-            if predictionSession.tuningEnabled {
+            if sessionVM.tuningEnabled {
                 VStack(alignment: .leading, spacing: 12) {
                     // MARK: — Word Caps
                     GroupBox(label: Label("Suggestion Length", systemImage: "text.word.spacing").font(.caption)) {
@@ -33,7 +33,7 @@ struct ParameterControlsView: View {
                                 Text("Max Words (global):")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Picker("", selection: $predictionSession.tuningMaxWords) {
+                                Picker("", selection: $sessionVM.tuningMaxWords) {
                                     Text("Model default").tag(0)
                                     ForEach(2...15, id: \.self) { n in
                                         Text("\(n)").tag(n)
@@ -49,14 +49,14 @@ struct ParameterControlsView: View {
                             modeWordCapPicker(
                                 label: "While typing",
                                 help: "Words to predict while you're actively typing (fast mode)",
-                                value: $predictionSession.midTypeWords
+                                value: $sessionVM.midTypeWords
                             )
 
                             // Pause word cap
                             modeWordCapPicker(
                                 label: "On pause",
                                 help: "Words to predict when you stop typing for a moment",
-                                value: $predictionSession.pauseWords
+                                value: $sessionVM.pauseWords
                             )
 
                             Text("Set to 0 to use defaults (mid=3, pause=5)")
@@ -72,30 +72,30 @@ struct ParameterControlsView: View {
                             parameterSlider(
                                 label: "Temperature",
                                 systemImage: "flame",
-                                value: $predictionSession.temperature,
+                                value: $sessionVM.temperature,
                                 range: 0.0...1.5,
-                                display: String(format: "%.2f", predictionSession.temperature)
+                                display: String(format: "%.2f", sessionVM.temperature)
                             )
                             parameterSlider(
                                 label: "Top-P",
                                 systemImage: "circle.dotted",
-                                value: $predictionSession.topP,
+                                value: $sessionVM.topP,
                                 range: 0.0...1.0,
-                                display: String(format: "%.2f", predictionSession.topP)
+                                display: String(format: "%.2f", sessionVM.topP)
                             )
                             parameterSlider(
                                 label: "Repeat Penalty",
                                 systemImage: "repeat",
-                                value: $predictionSession.repeatPenalty,
+                                value: $sessionVM.repeatPenalty,
                                 range: 0.5...2.0,
-                                display: String(format: "%.2f", predictionSession.repeatPenalty)
+                                display: String(format: "%.2f", sessionVM.repeatPenalty)
                             )
                             parameterSlider(
                                 label: "Confidence Threshold",
                                 systemImage: "checkmark.shield",
-                                value: $predictionSession.confidenceThreshold,
+                                value: $sessionVM.confidenceThreshold,
                                 range: 0.0...1.0,
-                                display: String(format: "%.2f", predictionSession.confidenceThreshold)
+                                display: String(format: "%.2f", sessionVM.confidenceThreshold)
                             )
                         }
                         .padding(.vertical, 4)
@@ -107,23 +107,23 @@ struct ParameterControlsView: View {
                             parameterSlider(
                                 label: "Verbosity Bias",
                                 systemImage: "text.bubble",
-                                value: $predictionSession.verbosityBias,
+                                value: $sessionVM.verbosityBias,
                                 range: 0.0...1.0,
-                                display: String(format: "%.2f", predictionSession.verbosityBias)
+                                display: String(format: "%.2f", sessionVM.verbosityBias)
                             )
                             parameterSlider(
                                 label: "Continuation Bias",
                                 systemImage: "arrow.forward",
-                                value: $predictionSession.continuationBias,
+                                value: $sessionVM.continuationBias,
                                 range: 0.0...1.0,
-                                display: String(format: "%.2f", predictionSession.continuationBias)
+                                display: String(format: "%.2f", sessionVM.continuationBias)
                             )
                             parameterSlider(
                                 label: "Instruction Strictness",
                                 systemImage: "list.bullet.clipboard",
-                                value: $predictionSession.instructionStrictness,
+                                value: $sessionVM.instructionStrictness,
                                 range: 0.0...1.0,
-                                display: String(format: "%.2f", predictionSession.instructionStrictness)
+                                display: String(format: "%.2f", sessionVM.instructionStrictness)
                             )
                         }
                         .padding(.vertical, 4)
