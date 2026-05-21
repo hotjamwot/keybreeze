@@ -11,6 +11,7 @@
 		6618DA312FBF35090097FD61 /* ModelOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA302FBF35090097FD61 /* ModelOption.swift */; };
 		6618DA332FBF35120097FD61 /* CompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA322FBF35120097FD61 /* CompletionController.swift */; };
 		6618DA352FBF35190097FD61 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA342FBF35190097FD61 /* PromptBuilder.swift */; };
+		6618DA372FBF6DE90097FD61 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA362FBF6DE90097FD61 /* SettingsView.swift */; };
 		6676777E2FBDC7A400B8DA3A /* InputSourceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */; };
 		667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */; };
 		667677842FBDE1C700B8DA3A /* GhostTextModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */; };
@@ -37,6 +38,7 @@
 		6618DA302FBF35090097FD61 /* ModelOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelOption.swift; sourceTree = "<group>"; };
 		6618DA322FBF35120097FD61 /* CompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionController.swift; sourceTree = "<group>"; };
 		6618DA342FBF35190097FD61 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		6618DA362FBF6DE90097FD61 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSourceMonitor.swift; sourceTree = "<group>"; };
 		6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostTextModifier.swift; sourceTree = "<group>"; };
@@ -137,6 +139,7 @@
 		A50000000000000000000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				6618DA362FBF6DE90097FD61 /* SettingsView.swift */,
 				667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */,
 				667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */,
 				A20000000000000000000008 /* MenuBarContentView.swift */,
@@ -236,6 +239,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* KeybreezeApp.swift in Sources */,
+				6618DA372FBF6DE90097FD61 /* SettingsView.swift in Sources */,
 				667677962FBE2CDD00B8DA3A /* SessionViewModel.swift in Sources */,
 				667677982FBE2D1100B8DA3A /* AppState.swift in Sources */,
 				A10000000000000000000002 /* AppKitLifecycle.swift in Sources */,

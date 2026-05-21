@@ -55,6 +55,11 @@ final class CompletionController: ObservableObject {
 
     // MARK: Public API
 
+    /// Cancels any in-flight prediction and debounce task.
+    func cancelPrediction() {
+        cancelAll()
+    }
+
     func editorStateChanged(_ state: EditorState) {
         guard isRunning else { return }
         cancelAll()

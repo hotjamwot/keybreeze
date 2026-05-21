@@ -1,129 +1,81 @@
 import SwiftUI
 
 /// Menu bar dropdown content — provides quick access to controls
-/// and an "Open Typing Lab" action that opens the full typing lab window.
+/// and a "Settings…" action that opens the full settings window.
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var sessionVM: SessionViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack {
-                Text("Keybreeze")
-                    .font(.headline)
-                Spacer()
-                if sessionVM.isPredicting {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 8, height: 8)
-                }
-                if sessionVM.isSchedulerActive {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            // 1. Daily completions statistic
+            Text("[\(sessionVM.dailyAcceptedCount)] keys breezed today")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
-            Divider()
-
-            // Open Typing Lab
+            // 2. Settings (opens full settings window with General + Typing Lab)
             Button {
-                openTypingLab()
+                openSettings()
             } label: {
-                Label("Open Typing Lab…", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
+                Label("Settings…", systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            Divider()
+            // 3. Backend selector (menu-style picker)
+            Picker("Backend", selection: $appState.selectedBackend) {
+                ForEach(LLMBackend.allCases) { backend in
+                    Text(backend.displayName).tag(backend)
+                }
+            }
+            .pickerStyle(.menu)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
 
-            // Backend selector
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Backend")
+            // 4. Model selector
+            Text("Model")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+
+            if appState.availableModels.isEmpty {
+                Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .padding(.horizontal, 12)
-
-                Picker("Backend", selection: $appState.selectedBackend) {
-                    ForEach(LLMBackend.allCases) { backend in
-                        Text(backend.displayName).tag(backend)
+                    .padding(.bottom, 6)
+            } else {
+                Picker("Model", selection: $appState.selectedModel) {
+                    ForEach(appState.availableModels) { option in
+                        Text(option.displayName).tag(option)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .labelsHidden()
                 .padding(.horizontal, 12)
-                .padding(.bottom, 4)
-
-                // Model selector
-                Text("Model")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-
-                if appState.availableModels.isEmpty {
-                    Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 12)
-                } else {
-                    Picker("Model", selection: $appState.selectedModel) {
-                        ForEach(appState.availableModels) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .padding(.horizontal, 12)
-                }
-            }
-            .padding(.vertical, 6)
-
-            // Status message
-            if !appState.modelCatalogStatus.isEmpty {
-                Text(appState.modelCatalogStatus)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
+                .padding(.bottom, 6)
             }
 
-            Divider()
-
-            // Active toggle
-            HStack {
-                Text("Active")
-                    .font(.body)
-                Spacer()
-                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .disabled(!appState.canRunPrediction)
+            // 5. Service status indicator
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(appState.isOllamaRunning ? Color.green : Color.red)
+                    .frame(width: 6, height: 6)
+                Text(appState.isOllamaRunning ? "Active" : "Inactive")
+                    .foregroundStyle(appState.isOllamaRunning ? .green : .red)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // Status
-            HStack(spacing: 6) {
-                if sessionVM.isPredicting {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                }
-                Text(sessionVM.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 6)
-
             Divider()
+                .padding(.vertical, 2)
 
-            // Quit
+            // 6. Quit
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -140,30 +92,31 @@ struct MenuBarContentView: View {
         }
     }
 
-    private func openTypingLab() {
-        // Store references to shared state before opening window
-        TypingLabWindowController.sharedAppState = appState
-        TypingLabWindowController.sharedSessionVM = sessionVM
-        TypingLabWindowController.openWindow()
+    private func openSettings() {
+        SettingsWindowController.openWindow(
+            appState: appState,
+            sessionVM: sessionVM
+        )
     }
 }
 
-// MARK: - Typing Lab Window Controller
+// MARK: - Settings Window Controller
 
-/// Manages opening the Typing Lab in a separate, standalone window.
-final class TypingLabWindowController: NSObject, NSWindowDelegate {
-    private static let shared = TypingLabWindowController()
+/// Manages opening the Settings window in a separate, standalone window.
+final class SettingsWindowController: NSObject, NSWindowDelegate {
+    private static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    /// Shared state from the menu bar — set before calling `openWindow()`.
-    static var sharedAppState: AppState?
+    /// Shared reference to the session VM — set before opening the window,
+    /// used during teardown to cancel in-flight predictions.
     static var sharedSessionVM: SessionViewModel?
 
-    static func openWindow() {
-        shared.open()
+    static func openWindow(appState: AppState, sessionVM: SessionViewModel) {
+        sharedSessionVM = sessionVM
+        shared.open(appState: appState, sessionVM: sessionVM)
     }
 
-    private func open() {
+    private func open(appState: AppState, sessionVM: SessionViewModel) {
         // If window already exists and is visible, bring it to front
         if let existingWindow = window, existingWindow.isVisible {
             existingWindow.makeKeyAndOrderFront(nil)
@@ -171,13 +124,8 @@ final class TypingLabWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        guard let appState = Self.sharedAppState,
-              let sessionVM = Self.sharedSessionVM else {
-            return
-        }
-
-        let width: CGFloat = 720
-        let height: CGFloat = 640
+        let width: CGFloat = 700
+        let height: CGFloat = 520
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -185,7 +133,7 @@ final class TypingLabWindowController: NSObject, NSWindowDelegate {
         let y = screenFrame.origin.y + (screenFrame.height - height) / 2
 
         let hostingView = NSHostingView(
-            rootView: TypingLabRootView()
+            rootView: SettingsView()
                 .environmentObject(appState)
                 .environmentObject(sessionVM)
         )
@@ -196,7 +144,7 @@ final class TypingLabWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        newWindow.title = "Keybreeze — Typing Lab"
+        newWindow.title = "Keybreeze Settings"
         newWindow.contentView = hostingView
         newWindow.delegate = self
         newWindow.makeKeyAndOrderFront(nil)
@@ -207,5 +155,8 @@ final class TypingLabWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         window = nil
+        // Cancel any in-flight prediction so stale @MainActor callbacks
+        // don't clash with SwiftUI's view teardown cycle.
+        Self.sharedSessionVM?.cancelCurrentPrediction()
     }
 }

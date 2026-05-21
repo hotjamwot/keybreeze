@@ -99,6 +99,18 @@ final class SessionViewModel: ObservableObject {
         appState.selectedModel
     }
 
+    /// Number of accepted predictions since midnight today.
+    var dailyAcceptedCount: Int {
+        predictionHistory.countTodayAccepted()
+    }
+
+    /// Cancels the current in-flight prediction without stopping the scheduler.
+    /// Called when the Typing Lab window closes so stale @MainActor callbacks
+    /// don't clash with SwiftUI's view teardown cycle.
+    func cancelCurrentPrediction() {
+        controller.cancelPrediction()
+    }
+
     // MARK: Init
 
     init(appState: AppState) {

@@ -1,0 +1,110 @@
+import SwiftUI
+
+/// Main settings window — macOS preferences-style grouped form with tabs.
+/// Minimal for now: contains a General pane and embeds Typing Lab.
+struct SettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var sessionVM: SessionViewModel
+
+    var body: some View {
+        TabView {
+            GeneralSettingsView()
+                .environmentObject(appState)
+                .environmentObject(sessionVM)
+                .tabItem {
+                    Label("General", systemImage: "gearshape")
+                }
+
+            TypingLabSettingsView()
+                .environmentObject(appState)
+                .environmentObject(sessionVM)
+                .tabItem {
+                    Label("Typing Lab", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
+                }
+        }
+        .frame(minWidth: 580, minHeight: 480)
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - General
+
+struct GeneralSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var sessionVM: SessionViewModel
+
+    var body: some View {
+        Form {
+            // MARK: - Active Toggle
+            Section {
+                HStack {
+                    Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
+                        .font(.body)
+                    Spacer()
+                    Toggle("Active", isOn: $sessionVM.isSchedulerActive)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .disabled(!appState.canRunPrediction)
+                }
+            } header: {
+                Text("Status")
+            }
+
+            // MARK: - Model
+            Section {
+                Picker("Backend", selection: $appState.selectedBackend) {
+                    ForEach(LLMBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+
+                if appState.availableModels.isEmpty {
+                    HStack {
+                        Text("Model")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                } else {
+                    Picker("Model", selection: $appState.selectedModel) {
+                        ForEach(appState.availableModels) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                }
+            } header: {
+                Text("LLM Provider")
+            } footer: {
+                Text("Choose the backend and model used for inline predictions.")
+            }
+
+            // MARK: - Today's Stats
+            Section {
+                HStack {
+                    Text("Keys Breezed Today")
+                    Spacer()
+                    Text("[\(sessionVM.dailyAcceptedCount)]")
+                        .foregroundStyle(.secondary)
+                        .font(.body.monospacedDigit())
+                }
+            } header: {
+                Text("Statistics")
+            }
+        }
+    }
+}
+
+// MARK: - Typing Lab
+
+struct TypingLabSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var sessionVM: SessionViewModel
+
+    var body: some View {
+        TypingLabRootView()
+            .environmentObject(appState)
+            .environmentObject(sessionVM)
+    }
+}

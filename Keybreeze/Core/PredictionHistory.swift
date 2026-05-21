@@ -44,6 +44,13 @@ final class PredictionHistory: @unchecked Sendable {
         records.filter { $0.resolution == resolution }.count
     }
 
+    /// Returns the count of predictions accepted today (since midnight local time).
+    func countTodayAccepted() -> Int {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        return records.filter { $0.timestamp >= todayStart && $0.resolution == .accepted }.count
+    }
+
     var acceptanceRate: Double {
         let total = Double(records.count)
         guard total > 0 else { return 0 }

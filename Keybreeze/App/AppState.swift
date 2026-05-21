@@ -29,6 +29,11 @@ final class AppState: ObservableObject {
     @Published private(set) var availableModels: [ModelOption] = []
     @Published var modelCatalogStatus = ""
 
+    // MARK: Ollama Health
+
+    @Published var isOllamaRunning = false
+    private var healthCheckTask: Task<Void, Never>?
+
     // MARK: Derived
 
     var canRunPrediction: Bool {
@@ -41,6 +46,37 @@ final class AppState: ObservableObject {
         loadConfig()
         loadSelectedModel()
         refreshModels()
+        startOllamaHealthCheck()
+    }
+
+    deinit {
+        healthCheckTask?.cancel()
+    }
+
+    // MARK: Ollama Health Check
+
+    private func startOllamaHealthCheck() {
+        healthCheckTask?.cancel()
+        healthCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkOllamaHealth()
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // every 5 seconds
+            }
+        }
+    }
+
+    private func checkOllamaHealth() async {
+        let url = config.ollamaBaseURL
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            await MainActor.run {
+                self.isOllamaRunning = (response as? HTTPURLResponse)?.statusCode == 200
+            }
+        } catch {
+            await MainActor.run {
+                self.isOllamaRunning = false
+            }
+        }
     }
 
     // MARK: Model Catalog
