@@ -12,6 +12,9 @@ enum PromptBuilder {
     - Match the user's writing style and tone.
     - If the text ends mid-sentence, complete it naturally.
     - If the text could end many ways, pick the most likely completion.
+    - NEVER restate or repeat the last word or phrase from the input.
+    - NEVER use ellipsis (...), dashes (—), or any stylistic prefixes.
+    - Always start with a fresh word that continues the sentence.
     """
 
     /// Build a continuation prompt from the given context.
@@ -25,7 +28,7 @@ enum PromptBuilder {
         if !styleNudge.isEmpty {
             prompt += "\n\nStyle: \(styleNudge)"
         }
-        prompt += "\n\nContinue naturally (max \(maxWords) words):"
+        prompt += "\n\nContinue with the next few words only:\n"
         return prompt
     }
 

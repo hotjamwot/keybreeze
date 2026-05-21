@@ -9,6 +9,17 @@ import OSLog
 final class SessionViewModel: ObservableObject {
     private let log = Logger(subsystem: "app.keybreeze", category: "session")
 
+    // MARK: Event Monitors (Tab acceptance)
+
+    /// Local monitor intercepts Tab in the Typing Lab window — can consume the event.
+    /// This works everywhere Keybreeze has a focused window: Keystrokes in the
+    /// Typing Lab playground, or any future Keybreeze-owned text surface.
+    private var localEventMonitor: Any?
+
+    /// Global monitor observes Tab presses in *other* apps — cannot consume, but
+    /// we still insert the suggestion via AccessibilityManager.
+    private var globalEventMonitor: Any?
+
     // MARK: Published State — Editor
 
     @Published var draftText = "" {
@@ -24,8 +35,10 @@ final class SessionViewModel: ObservableObject {
         didSet {
             if isSchedulerActive {
                 controller.start()
+                installTabInterceptors()
             } else {
                 controller.stop()
+                removeTabInterceptors()
                 suggestion = ""
                 currentLatency = nil
                 currentTTFT = nil
@@ -74,6 +87,11 @@ final class SessionViewModel: ObservableObject {
     private let controller: CompletionController
     private var lastSuggestion = ""
     private var cancellables = Set<AnyCancellable>()
+
+    /// Suppresses handleDraftChanged() while we're programmatically setting
+    /// draftText from acceptWord/acceptSuggestion, so the controller doesn't
+    /// receive stale or duplicate editor states.
+    private var isAccepting = false
 
     // MARK: Derived
 
@@ -130,7 +148,7 @@ final class SessionViewModel: ObservableObject {
     // MARK: Draft Handling
 
     private func handleDraftChanged() {
-        guard isSchedulerActive else { return }
+        guard isSchedulerActive, !isAccepting else { return }
         controller.editorStateChanged(EditorState(
             textBeforeCursor: draftText,
             textAfterCursor: ""
@@ -139,6 +157,62 @@ final class SessionViewModel: ObservableObject {
 
     func draftTextChanged() {
         // Called from TypingLabView.onChange — already handled in didSet
+    }
+
+    // MARK: Tab Interception
+
+    /// Installs local and global NSEvent monitors to intercept Tab presses.
+    private func installTabInterceptors() {
+        removeTabInterceptors()
+
+        // Local monitor: captures Tab in our own windows (Typing Lab).
+        // Accepts one word at a time — remaining ghost text stays visible.
+        // The prediction engine is suppressed via expectedTextAfterAcceptance
+        // so it won't fire a new prediction until the user's next pause.
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.isSchedulerActive, !self.suggestion.isEmpty else { return event }
+            if event.keyCode == 48 { // kVK_Tab
+                self.acceptWord()
+                return nil // Consume the event
+            }
+            return event
+        }
+
+        // Global monitor: observes Tab in other apps. Cannot consume the event,
+        // but inserts the first accepted word via AccessibilityManager.
+        // Remaining ghost words stay visible for granular acceptance.
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.isSchedulerActive, !self.suggestion.isEmpty, event.keyCode == 48 else { return }
+
+            let components = self.suggestion.components(separatedBy: .whitespaces)
+            guard let first = components.first, !first.isEmpty else { return }
+
+            // Insert only the first word
+            AccessibilityManager.shared.insertText(first + " ")
+
+            // Keep remaining words as the suggestion
+            self.suggestion = components.dropFirst().joined(separator: " ")
+        }
+    }
+
+    private func removeTabInterceptors() {
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+    }
+
+    deinit {
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     // MARK: Actions
@@ -172,11 +246,35 @@ final class SessionViewModel: ObservableObject {
         let components = suggestion.components(separatedBy: .whitespaces)
         guard let first = components.first, !first.isEmpty else { return }
 
-        let newText = draftText + first + " "
+        // Determine the accepted word:
+        // If the model's first word repeats the last word the user typed,
+        // skip it to avoid duplication (e.g. user types "a " → model predicts "a curious").
+        let lastDraftWord = draftText.split(separator: " ").last.flatMap(String.init) ?? ""
+        let acceptedWord: String
+        let remainingSuggestion: String
+        if lastDraftWord == first {
+            // First word is already typed — skip it, accept the second word instead
+            let rest = Array(components.dropFirst())
+            if rest.isEmpty { return }
+            acceptedWord = rest[0]
+            remainingSuggestion = rest.dropFirst().joined(separator: " ")
+        } else {
+            acceptedWord = first
+            remainingSuggestion = components.dropFirst().joined(separator: " ")
+        }
+
+        let newText = draftText + acceptedWord + " "
+
+        // Suppress didSet → handleDraftChanged() so the controller doesn't
+        // receive our programmatic text change as a new editor state.
+        // The remaining ghost suggestion is already in place, so the user
+        // can either Tab again or type — both of which will trigger fresh
+        // predictions naturally.
+        isAccepting = true
         draftText = newText
-        suggestion = components.dropFirst().joined(separator: " ")
-        // Tell the controller to expect this text after acceptance echo
-        controller.expectedTextAfterAcceptance = newText
+        isAccepting = false
+
+        suggestion = remainingSuggestion
 
         predictionHistory.add(PredictionRecord(
             timestamp: Date(),
@@ -186,7 +284,7 @@ final class SessionViewModel: ObservableObject {
             timeToFirstToken: currentTTFT,
             totalTime: currentLatency ?? 0,
             typedContext: draftText,
-            generatedContinuation: first
+            generatedContinuation: acceptedWord
         ))
     }
 
