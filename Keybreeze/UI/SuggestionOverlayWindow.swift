@@ -141,7 +141,6 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
     /// Hides the overlay immediately.
     func hide() {
         guard let window else {
-            log.debug("hide() called but no window exists")
             return
         }
         log.debug("Hiding overlay window")

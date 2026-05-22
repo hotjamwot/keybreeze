@@ -94,17 +94,12 @@ struct TypingLabRootView: View {
 
             // Footer controls
             HStack(spacing: 12) {
-                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .disabled(!appState.canRunPrediction)
-
                 Text(sessionVM.statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
+                
                 Spacer()
-
+                
                 // Show latency if available
                 if let latency = sessionVM.currentLatency {
                     Text(String(format: "%.1fms", latency * 1000))
@@ -114,7 +109,7 @@ struct TypingLabRootView: View {
                         .padding(.vertical, 2)
                         .background(Color.secondary.opacity(0.1), in: Capsule())
                 }
-
+                
                 // Toggle visibility of sections
                 if selectedTab == .playground {
                     Toggle("Diag", isOn: $showDiagnostics)

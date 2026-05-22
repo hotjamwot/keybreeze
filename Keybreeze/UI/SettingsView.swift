@@ -45,10 +45,20 @@ struct GeneralSettingsView: View {
                     Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
                         .font(.body)
                     Spacer()
-                    Toggle("Active", isOn: $sessionVM.isSchedulerActive)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .disabled(!appState.canRunPrediction)
+                    Button(action: {
+                        sessionVM.isSchedulerActive.toggle()
+                    }) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(sessionVM.isSchedulerActive ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
+                                .font(.caption2)
+                                .foregroundStyle(sessionVM.isSchedulerActive ? .green : .orange)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!appState.canRunPrediction)
                 }
 
                 // AX Permission status.

@@ -105,7 +105,7 @@ This section is the **ground truth** — every file that exists, what it does, a
 - **Owns:** CGEventTap lifecycle, debounce timer, app-gating logic, **`SuggestionOverlayWindowController`** (floating ghost overlay window).
 - **Configuration:** `excludedBundleIDs`, `manualOnlyBundleIDs`, `predictInManualOnly`.
 - **Published properties:** `focusedAppBundleID`, `focusedAppName`, `isPaused`, `pauseReason`.
-- **Lifecycle:** `start()` / `stop()` — called by `SessionViewModel` when `systemWideMode` is toggled.
+- **Lifecycle:** `start()` / `stop()` — called by `SessionViewModel` when `isSchedulerActive` is toggled.
 - **Overlay wiring:** A Combine subscription on `controller.$suggestion` shows/hides the overlay. When `suggestion` is non-empty and `lastCursorRect` is valid, the overlay displays the suggestion text positioned at the cursor. When suggestion is cleared, the overlay hides.
 - **App gating:** Skips Keybreeze's own bundle ID (`app.keybreeze.Keybreeze`). Checks excluded/manual-only lists. Suspends during non-ASCII IME composition via `InputSourceMonitor.isASCIICompatible`.
 - **Inspired by:** Ghost Type's `GlobalKeyMonitor` pattern — event-tap based to avoid polling overhead while ensuring instant keystroke response.
@@ -126,12 +126,12 @@ This section is the **ground truth** — every file that exists, what it does, a
 - **RULE:** Do not add markdown, explanations, or conversational tone to the prompts — they are for a continuation engine, not a chatbot.
 
 ### `Keybreeze/UI/MenuBarContentView.swift`
-- **Role:** The menu bar dropdown content. A compact `VStack` with: daily completions count, Active toggle (switch), mode indicator (System/Playground), "Predict in all apps" toggle (system-wide mode), focused app display (green/orange dot + app name), Settings button, Backend/Model pickers, status indicator, suggestion preview, Quit button.
+- **Role:** The menu bar dropdown content. A compact `VStack` with: daily completions count, Active button (enable/disable), mode indicator (always System when active), Settings button, Backend/Model pickers, status indicator, suggestion preview, Quit button.
 - **Contains:** `SettingsWindowController` — manages opening/closing the standalone Settings window (700×520, centered on screen). Uses `AppKitLifecycle.showInDockAndCmdTab()`/`restoreToAccessory()` for Dock/Cmd+Tab presence while open.
 - **RULE:** `windowWillClose` must NOT cancel predictions or touch `SessionViewModel` — the session VM is an app-level singleton. Just release the window reference.
 - **RULE:** `restoreToAccessory()` is deferred to next runloop to prevent NSApp notification re-entrancy crashing during SwiftUI view teardown.
 - **RULE:** This is the ONLY dropdown content. Do NOT add Typing Lab views here. Do NOT change `.menuBarExtraStyle(.menu)`.
-- **RULE:** System-wide mode toggle is only shown when `isSchedulerActive` is true (avoids clutter when predictions are off).
+- **RULE:** When active, system-wide predictions are always enabled (no separate toggle needed).
 - **RULE:** Focused app display reads from `sessionVM.focusedAppName`, `sessionVM.isSystemWidePaused`, `sessionVM.systemWidePauseReason` — these are backed by `SystemWidePredictor`'s published properties.
 - **RULE:** "Grant AX Access" button was removed from the menu bar — it now lives in Settings → General → Status.
 
@@ -145,13 +145,15 @@ This section is the **ground truth** — every file that exists, what it does, a
 ### `Keybreeze/UI/SessionViewModel.swift`
 - **Role:** The bridge between UI and prediction engine. Holds all published state for editor, prediction mode, model tuning, prompt editing, app gating, and diagnostics.
 - **Owns:** `CompletionController`, `PredictionHistory`, `SystemWidePredictor` (lazy).
-- **Two modes:** Playground mode (default) — predictions driven by `draftText` in the Typing Lab text field. System-wide mode — predictions driven by `SystemWidePredictor` reading the focused app's text field via Accessibility API.
+- **Two modes:** Playground mode (default) — predictions driven by `draftText` in the Typing Lab text field. System-wide mode — predictions driven by `SystemWidePredictor` reading the focused app's text field via Accessibility API. **Note: System-wide mode is automatically enabled when the prediction engine is active.**
 - **Initialization:** Wires controller outputs via Combine. Sets `controller.onRecordPrediction` to add records to history. Sets up debounced Combine subscriptions for `$temperature`, `$topP`, `$tuningMaxWords`, `$customSystemPrompt`, `$styleNudge` → `updateControllerFromAppState()`.
 - **Methods:** `acceptSuggestion()`, `acceptWord()`, `syncTuningFromModel()`, `updateControllerFromAppState()`, `loadSettings()`, `saveSettings()`, `startSystemWidePredictor()`, `stopSystemWidePredictor()`.
-- **Published properties added:** `systemWideMode` (toggle), plus computed `focusedAppBundleID`, `focusedAppName`, `isSystemWidePaused`, `systemWidePauseReason`.
+- **Published properties:** `isSchedulerActive` (controls both LLM engine and system-wide predictions), `isPredicting`, `suggestion`, `statusMessage`, `currentPredictionMode`, `correctionState`, plus model tuning and app gating properties.
+- **Computed properties:** `focusedAppBundleID`, `focusedAppName`, `isSystemWidePaused`, `systemWidePauseReason` (derived from `SystemWidePredictor`).
 - **RULE:** Do NOT call `updateControllerFromAppState()` only in init — the Combine subscriptions keep parameters in sync automatically.
 - **RULE:** History records from `acceptSuggestion()`/`acceptWord()` include `currentTTFT` and `currentLatency` from the controller.
 - **RULE:** `isAccepting` flag suppresses `handleDraftChanged()` during programmatic text changes, preventing stale editor states from reaching the controller.
+- **RULE:** When `isSchedulerActive` is true, both the LLM controller and system-wide predictor are active (no separate toggles needed).
 
 ### `Keybreeze/UI/GhostTextModifier.swift`
 - **Role:** SwiftUI `ViewModifier` that overlays ghost text as grey/translucent text (`.secondary.opacity(0.45)`) on top of the text field. Supports correction state (red strikethrough + green suggestion).
@@ -209,7 +211,7 @@ KeybreezeApp (@main)
  │    │    └── LLMClient (HTTP: /v1/chat/completions with SSE)
  │    ├── PredictionHistory (ring buffer, 200 records)
  │    ├── AppSettings (persisted Codable)
- │    ├── SystemWidePredictor (lazy, only when systemWideMode enabled)
+ │    ├── SystemWidePredictor (lazy, only when isSchedulerActive enabled)
  │    │    ├── AccessibilityManager (singleton: AX text read/insert + cursor rect)
  │    │    ├── InputSourceMonitor (singleton: IME safety gate)
  │    │    └── SuggestionOverlayWindowController (floating ghost overlay)
