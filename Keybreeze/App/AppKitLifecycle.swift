@@ -26,4 +26,23 @@ enum AppKitLifecycle {
             }
         }
     }
+
+    /// Temporarily switch to `.regular` activation policy so the settings
+    /// window appears in the Dock and Cmd+Tab switcher while visible.
+    /// Call `.restoreToAccessory()` when the window closes.
+    static func showInDockAndCmdTab() {
+        if NSApplication.shared.activationPolicy() != .regular {
+            NSApplication.shared.setActivationPolicy(.regular)
+            // Bring the app to front so the window is immediately visible
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Restore the `.accessory` activation policy (no Dock icon,
+    /// no Cmd+Tab presence) after the settings window closes.
+    static func restoreToAccessory() {
+        if NSApplication.shared.activationPolicy() != .accessory {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
+    }
 }

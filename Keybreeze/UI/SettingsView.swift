@@ -33,6 +33,10 @@ struct GeneralSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var sessionVM: SessionViewModel
 
+    /// Tracks whether AX permissions have been granted.
+    /// Refreshed when the view appears.
+    @State private var accessibilityGranted: Bool = false
+
     var body: some View {
         Form {
             // MARK: - Active Toggle
@@ -46,8 +50,34 @@ struct GeneralSettingsView: View {
                         .labelsHidden()
                         .disabled(!appState.canRunPrediction)
                 }
+
+                // AX Permission status.
+                // NOTE: We check status on appear only. The AX permission dialog
+                // returns focus to the app after the user grants/denies, which
+                // triggers .onAppear again so the status updates correctly.
+                HStack {
+                    Label(accessibilityGranted ? "Accessibility Access Granted" : "Accessibility Access Required",
+                          systemImage: accessibilityGranted ? "hand.raised.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(accessibilityGranted ? .secondary : .orange)
+                        .font(.body)
+                    Spacer()
+                    if !accessibilityGranted {
+                        Button("Grant AX Access") {
+                            AccessibilityManager.shared.requestAccessibility()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .controlSize(.small)
+                    }
+                }
+                .onAppear {
+                    refreshAXStatus()
+                }
             } header: {
                 Text("Status")
+            } footer: {
+                Text("Keybreeze requires Accessibility access to read and insert text in other apps.")
             }
 
             // MARK: - Model
@@ -93,6 +123,11 @@ struct GeneralSettingsView: View {
                 Text("Statistics")
             }
         }
+    }
+
+    /// Refresh the AX permission status from the AccessibilityManager.
+    private func refreshAXStatus() {
+        accessibilityGranted = AccessibilityManager.shared.checkAccessibility()
     }
 }
 

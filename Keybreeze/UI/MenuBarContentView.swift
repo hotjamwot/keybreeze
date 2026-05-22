@@ -15,7 +15,57 @@ struct MenuBarContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
 
-            // 2. Settings (opens full settings window with General + Typing Lab)
+            // 2. Active toggle + mode indicator
+            HStack(spacing: 8) {
+                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+
+                if sessionVM.isSchedulerActive {
+                    if sessionVM.systemWideMode {
+                        Text("System")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Playground")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            // 3. System-wide mode toggle (only when active)
+            if sessionVM.isSchedulerActive {
+                Toggle(isOn: $sessionVM.systemWideMode) {
+                    Label("Predict in all apps", systemImage: "app.connected.to.app.below.fill")
+                        .font(.caption)
+                }
+                .toggleStyle(.switch)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+
+            // 4. Focused app info (when system-wide is active)
+            if sessionVM.isSchedulerActive && sessionVM.systemWideMode,
+               let appName = sessionVM.focusedAppName {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(sessionVM.isSystemWidePaused ? Color.orange : Color.green)
+                        .frame(width: 6, height: 6)
+                    Text(sessionVM.isSystemWidePaused ? sessionVM.systemWidePauseReason : appName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+
+            // 5. Settings
             Button {
                 openSettings()
             } label: {
@@ -26,7 +76,10 @@ struct MenuBarContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 3. Backend selector (menu-style picker)
+            Divider()
+                .padding(.vertical, 2)
+
+            // 6. Backend selector
             Picker("Backend", selection: $appState.selectedBackend) {
                 ForEach(LLMBackend.allCases) { backend in
                     Text(backend.displayName).tag(backend)
@@ -36,7 +89,7 @@ struct MenuBarContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 4. Model selector
+            // 7. Model selector
             Text("Model")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -61,7 +114,7 @@ struct MenuBarContentView: View {
                 .padding(.bottom, 6)
             }
 
-            // 5. Service status indicator
+            // 8. Service status indicator
             HStack(spacing: 4) {
                 Circle()
                     .fill(appState.isOllamaRunning ? Color.green : Color.red)
@@ -72,10 +125,25 @@ struct MenuBarContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
+            // 9. Suggestion preview (when system-wide and a suggestion exists)
+            if sessionVM.isSchedulerActive && sessionVM.systemWideMode && !sessionVM.suggestion.isEmpty {
+                HStack(spacing: 4) {
+                    Text("→")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Text(sessionVM.suggestion)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+
             Divider()
                 .padding(.vertical, 2)
 
-            // 6. Quit
+            // 10. Quit
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -107,12 +175,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    /// Shared reference to the session VM — set before opening the window,
-    /// used during teardown to cancel in-flight predictions.
-    static var sharedSessionVM: SessionViewModel?
-
     static func openWindow(appState: AppState, sessionVM: SessionViewModel) {
-        sharedSessionVM = sessionVM
+        // Switch to regular activation policy so the settings window
+        // appears in the Dock and Cmd+Tab switcher while open.
+        AppKitLifecycle.showInDockAndCmdTab()
         shared.open(appState: appState, sessionVM: sessionVM)
     }
 
@@ -154,9 +220,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // The SessionViewModel is an app-level singleton shared with the
+        // menu bar and other UI surfaces. Closing the settings window is
+        // purely a UI action — it must NOT cancel predictions or touch
+        // the session VM state. Predictions continue running in other apps.
+
+        // 1. Release the window reference first, allowing the NSHostingView
+        //    and its SwiftUI view hierarchy to deallocate synchronously.
         window = nil
-        // Cancel any in-flight prediction so stale @MainActor callbacks
-        // don't clash with SwiftUI's view teardown cycle.
-        Self.sharedSessionVM?.cancelCurrentPrediction()
+
+        // 2. Defer the activation policy change to the next run loop
+        //    iteration. setActivationPolicy(.accessory) triggers NSApp
+        //    lifecycle notifications which can cause re-entrancy crashes
+        //    if called while SwiftUI views are mid-teardown.
+        DispatchQueue.main.async {
+            AppKitLifecycle.restoreToAccessory()
+        }
     }
 }

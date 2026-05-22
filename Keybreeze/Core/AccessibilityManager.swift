@@ -193,42 +193,66 @@ final class AccessibilityManager {
         let pidRef = AXUIElementCreateApplication(pid)
         guard let focused = getFocusedElement(from: pidRef) else { return }
 
-        // Try AX insertion first
-        let inserted = performAXInsertion(text, on: focused)
+        // Try AX insertion using keyboard event synthesis first.
+        // This is safe for all app types (plain text, rich text, web views)
+        // because it doesn't touch the element's value attribute directly.
+        let inserted = insertViaKeyboardEvents(text, on: focused)
         if inserted { return }
 
-        // Fallback to clipboard
+        // Fallback: clipboard-based insertion (last resort)
         insertViaClipboard(text)
     }
 
-    private func performAXInsertion(_ text: String, on element: AXUIElement) -> Bool {
-        // Get current selected range
-        var rangeValue: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
-        guard result == .success, let rangeRef = rangeValue else { return false }
+    /// Insert text by synthesizing individual key events for each character.
+    /// This is the safest approach for rich text editors (Obsidian, web views, etc.)
+    /// because it doesn't read or replace the full element value — it posts
+    /// keystrokes exactly as if the user typed them, preserving all formatting,
+    /// line breaks, and editor state.
+    ///
+    /// Uses CGEvent with CGEventKeyboardSetUnicodeString to generate proper
+    /// text-input keyboard events that any text handling system understands.
+    private func insertViaKeyboardEvents(_ text: String, on element: AXUIElement) -> Bool {
+        guard !text.isEmpty else { return true }
 
-        var nsRange = NSRange(location: 0, length: 0)
-        guard AXValueGetValue(rangeRef as! AXValue, .cfRange, &nsRange) else { return false }
+        // Get the process ID of the focused element
+        var pid: pid_t = 0
+        let pidResult = AXUIElementGetPid(element, &pid)
+        guard pidResult == .success else { return false }
 
-        // Get current value
-        var currentValue: CFTypeRef?
-        let valueResult = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &currentValue)
-        guard valueResult == .success, let currentText = currentValue as? String else { return false }
+        // Create a CGEventSource from the HID system state for proper keyboard event generation
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
 
-        // Replace the selected range with the new text
-        let prefix = String(currentText.prefix(nsRange.location))
-        let suffix = String(currentText.dropFirst(nsRange.location + nsRange.length))
-        let newText = prefix + text + suffix
+        for character in text {
+            // Key down
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) else {
+                return false
+            }
 
-        // Set the new text value
-        let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, newText as CFString)
-        guard setResult == .success else { return false }
+            // Use the Swift instance method CGEvent.keyboardSetUnicodeString
+            // to set the text. This generates proper text-input keyboard events
+            // that any text handling system understands.
+            let chars = Array(character.utf16)
+            chars.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                event.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
+            }
 
-        // Move cursor to end of inserted text
-        let newCursorPos = NSRange(location: nsRange.location + text.count, length: 0)
-        var axNewRange = newCursorPos
-        if let axValue = AXValueCreate(.cfRange, &axNewRange) {
-            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, axValue)
+            // post(tap:) returns Void in Swift — it either succeeds or
+            // raises an ObjC exception on failure, so no return value check needed.
+            event.post(tap: .cghidEventTap)
+
+            // Key up
+            guard let upEvent = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+                return false
+            }
+
+            let upChars = Array(character.utf16)
+            upChars.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                upEvent.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
+            }
+
+            upEvent.post(tap: .cghidEventTap)
         }
 
         return true
@@ -243,7 +267,11 @@ final class AccessibilityManager {
         pasteboard.setString(text, forType: .string)
 
         // Simulate Cmd+V
-        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            pasteboard.clearContents()
+            if let saved = saved { pasteboard.writeObjects(saved) }
+            return
+        }
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true) // V
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)
         keyDown?.flags = [.maskCommand]

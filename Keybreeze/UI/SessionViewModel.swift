@@ -5,9 +5,21 @@ import OSLog
 
 /// Prediction session view model — the bridge between the user interface and the prediction engine.
 /// Acts as both the editor state holder and the observable surface for TypingLab views.
+///
+/// Modes:
+/// - Playground mode (default): predictions are driven by `draftText` in the Typing Lab text field.
+/// - System-wide mode: predictions are driven by `SystemWidePredictor` reading the focused app's
+///   text field via Accessibility API. The playground's `draftText` is decoupled from the engine.
 @MainActor
 final class SessionViewModel: ObservableObject {
     private let log = Logger(subsystem: "app.keybreeze", category: "session")
+
+    // MARK: System-Wide Predictor
+
+    /// Bridges external app text into the prediction engine.
+    private lazy var systemWidePredictor: SystemWidePredictor = {
+        SystemWidePredictor(controller: controller)
+    }()
 
     // MARK: Event Monitors (Tab acceptance)
 
@@ -36,8 +48,12 @@ final class SessionViewModel: ObservableObject {
             if isSchedulerActive {
                 controller.start()
                 installTabInterceptors()
+                if systemWideMode {
+                    startSystemWidePredictor()
+                }
             } else {
                 controller.stop()
+                stopSystemWidePredictor()
                 removeTabInterceptors()
                 suggestion = ""
                 currentLatency = nil
@@ -45,6 +61,20 @@ final class SessionViewModel: ObservableObject {
             }
         }
     }
+
+    /// When true, predictions come from the system-wide Accessibility API poller
+    /// instead of the Typing Lab playground's draftText.
+    @Published var systemWideMode = false {
+        didSet {
+            guard isSchedulerActive else { return }
+            if systemWideMode {
+                startSystemWidePredictor()
+            } else {
+                stopSystemWidePredictor()
+            }
+        }
+    }
+
     @Published var currentPredictionMode = ""
     @Published var correctionState: CorrectionState?
 
@@ -319,6 +349,44 @@ final class SessionViewModel: ObservableObject {
         controller.maxWords = tuningMaxWords > 0 ? tuningMaxWords : effectiveModelOption.maxWords
         controller.customSystemPrompt = customSystemPrompt
         controller.styleNudge = styleNudge
+    }
+
+    // MARK: System-Wide Predictor Lifecycle
+
+    /// Start the system-wide predictor, syncing app gating lists.
+    private func startSystemWidePredictor() {
+        systemWidePredictor.excludedBundleIDs = excludedBundleIDs
+        systemWidePredictor.manualOnlyBundleIDs = manualOnlyBundleIDs
+        systemWidePredictor.start()
+        log.info("System-wide predictor started")
+    }
+
+    /// Stop the system-wide predictor.
+    private func stopSystemWidePredictor() {
+        systemWidePredictor.stop()
+        log.info("System-wide predictor stopped")
+    }
+
+    /// The focused app bundle ID from the system-wide predictor (if active).
+    var focusedAppBundleID: String? {
+        guard systemWideMode else { return nil }
+        return systemWidePredictor.focusedAppBundleID
+    }
+
+    /// The focused app display name from the system-wide predictor (if active).
+    var focusedAppName: String? {
+        guard systemWideMode else { return nil }
+        return systemWidePredictor.focusedAppName
+    }
+
+    /// Whether the system-wide predictor is paused.
+    var isSystemWidePaused: Bool {
+        systemWidePredictor.isPaused
+    }
+
+    /// The pause reason from the system-wide predictor.
+    var systemWidePauseReason: String {
+        systemWidePredictor.pauseReason
     }
 
     // MARK: Preset

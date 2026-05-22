@@ -168,7 +168,7 @@ Keybreeze/
 ├── Core/             AppState, ModelRegistry, PredictionEngine, Scheduler, History, ShadowPredictor
 ├── LLM/              5 files: LLMProvider protocol, LLMBackend enum + LLMConfig,
 │                     OllamaLLMService, LlamaCppService, PromptBuilder
-├── UI/               MenuBarContentView, PredictionSessionViewModel, TypingLab/ (5 views)
+├── UI/               MenuBarContentView, PredictionSessionViewModel, SettingsView, TypingLab/ (5 views)
 ├── Utils/            WordLimiter, Debouncer, LatencyLogger
 ```
 
@@ -222,9 +222,14 @@ Backend selected via segmented control in the menu bar. Swapping backends auto-m
 | 2 — Prediction Engine | ✅ |
 | 2.5 — Ghost Text + Tuning | ✅ |
 | Typing Lab / Feel Engineering | ✅ |
-| 3 — Obsidian Integration | 🔜 Next |
-| 4 — Tab Accept System | Later |
+| 3 — App Integration for all Mac apps | 🔄 Needs work |
+| 4 — Tab Accept System (word-by-word via Tab) | ✅ |
 | 5+ — Polish, Style Memory, Expansion | Later |
+
+**Current issues:**
+1. Settings window close still intermittently crashes (ViewBridge error, re-entrancy during teardown)
+2. Ghost text only shows in Typing Lab playground — not in third-party apps
+3. System-wide text insertion works via keyboard event synthesis but lacks visual prediction display in external apps
 
 ---
 

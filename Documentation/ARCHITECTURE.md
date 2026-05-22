@@ -19,9 +19,13 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase 2 — Prediction Engine | ✅ |
 | Phase 2.5 — Ghost Text + Tuning | ✅ |
 | Typing Lab / Feel Engineering | ✅ |
-| Phase 3 — Obsidian Integration | 🔜 Next |
-| Phase 4 — Tab Accept System | Later |
+| Phase 3 — System-Wide Integration (AX context reading + Tab accept) | 🔄 Needs work |
+| Phase 4 — Ghost Overlay in External Apps | ❌ Not implemented |
 | Phase 5+ — Polish, Style Memory, Expansion | Later |
+
+**Known issues:**
+1. **Settings window close crash** — the app hangs when closing the settings window. Root cause was re-entrancy from `setActivationPolicy()` triggering NSApp notifications during SwiftUI view teardown. Mitigated by deferring `restoreToAccessory()` to the next runloop, but the underlying ViewBridge error ("Modifying state during view update") still occurs intermittently.
+2. **Ghost text in external apps not implemented** — predictions feed into the engine from other apps' text fields (via AX API), but: (a) predictions only display in the Typing Lab playground, not as an overlay on external apps; (b) Tab acceptance inserts text via keyboard event synthesis, but the user cannot see what will be typed before accepting. A floating overlay window is required for inline ghost text in third-party apps.
 
 ---
 
@@ -29,10 +33,10 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 
 | Path | Role |
 |------|------|
-| `Keybreeze/App/` | `@main` entry (`KeybreezeApp.swift`), AppKit activation policy, termination cleanup |
-| `Keybreeze/Core/` | `AppState`, `CompletionController`, `PredictionHistory`, `PredictionMode`, `ModelOption`, `AppSettings`, `AccessibilityManager`, `InputSourceMonitor` |
+| `Keybreeze/App/` | `@main` entry (`KeybreezeApp.swift`), AppKit activation policy (`showInDockAndCmdTab`/`restoreToAccessory`), termination cleanup |
+| `Keybreeze/Core/` | `AppState`, `CompletionController`, `PredictionHistory`, `PredictionMode`, `ModelOption`, `AppSettings`, `AccessibilityManager`, `InputSourceMonitor`, `SystemWidePredictor` |
 | `Keybreeze/LLM/` | `LLMClient` (singleton HTTP client), `PromptBuilder`, `LLMConfig`, `LLMBackend` |
-| `Keybreeze/UI/` | `MenuBarContentView`, `SessionViewModel`, `GhostTextModifier`, `TypingLab/` subfolder |
+| `Keybreeze/UI/` | `MenuBarContentView`, `SessionViewModel`, `GhostTextModifier`, `SettingsView`, `TypingLab/` subfolder |
 | `Keybreeze/Utils/` | `KeybreezeLatencyLogger` |
 
 ---
@@ -49,7 +53,9 @@ This section is the **ground truth** — every file that exists, what it does, a
 
 ### `Keybreeze/App/AppKitLifecycle.swift`
 - **Role:** Sets activation policy to `.accessory`. Registers for `willTerminateNotification` to pkill any orphan `llama-server` processes.
+- **Methods:** `showInDockAndCmdTab()` — temporarily switches to `.regular` activation policy when the settings window opens, making it appear in the Dock and Cmd+Tab. `restoreToAccessory()` — switches back to `.accessory` when the window closes.
 - **RULE:** This is the ONLY file that touches `NSApplication` lifecycle. Do not add AppKit lifecycle code elsewhere.
+- **RULE:** `restoreToAccessory()` must be called from a deferred context (e.g. `DispatchQueue.main.async`) when triggered by window teardown to avoid re-entrancy crashes.
 
 ### `Keybreeze/App/AppState.swift`
 - **Role:** Shared application state: `LLMConfig`, `selectedBackend`, `selectedModel`, model catalog (`availableModels`, `modelCatalogStatus`).
@@ -85,11 +91,24 @@ This section is the **ground truth** — every file that exists, what it does, a
 
 ### `Keybreeze/Core/AccessibilityManager.swift`
 - **Role:** Singleton for Accessibility API: permission check/request, text context extraction (`getTextContext`), text insertion (`insertText`), app info (`focusedAppBundleID`). Default excluded/manual-only bundle IDs.
-- **RULE:** All methods are `@MainActor`. `getTextContext` returns `TextContext?`. `insertText` uses AX insertion with clipboard fallback.
+- **Text insertion:** Uses `insertViaKeyboardEvents()` — synthesizes CGEvent keyboard events per-character via `keyboardSetUnicodeString`. This preserves rich text formatting and editor state (Obsidian, web views, etc.). Falls back to clipboard-based insertion.
+- **RULE:** All methods are `@MainActor`. `getTextContext` returns `TextContext?`. `insertText` uses keyboard event synthesis with clipboard fallback.
+- **RULE:** Do NOT read/set `kAXValueAttribute` for insertion — this destroys formatting in rich editors.
 
 ### `Keybreeze/Core/InputSourceMonitor.swift`
 - **Role:** Monitors keyboard input source changes via Carbon `TISCopyCurrentKeyboardInputSource`. Reports `isASCIICompatible` boolean. Used as safety gate to suspend predictions during IME composition.
-- **RULE:** Singleton. Do not modify. Used by `CompletionController.readinessCheck()`.
+- **RULE:** Singleton. Do not modify. Used by `CompletionController.readinessCheck()` and `SystemWidePredictor`.
+
+### `Keybreeze/Core/SystemWidePredictor.swift`
+- **Role:** Bridges the Accessibility API text context into the `CompletionController` for system-wide prediction. Uses two complementary trigger mechanisms: a CGEventTap (captures keyDown events system-wide for instant response) and a 500ms idle safety poll (catches paste/undo/mouse changes).
+- **Owns:** CGEventTap lifecycle, debounce timer, app-gating logic.
+- **Configuration:** `excludedBundleIDs`, `manualOnlyBundleIDs`, `predictInManualOnly`.
+- **Published properties:** `focusedAppBundleID`, `focusedAppName`, `isPaused`, `pauseReason`.
+- **Lifecycle:** `start()` / `stop()` — called by `SessionViewModel` when `systemWideMode` is toggled.
+- **App gating:** Skips Keybreeze's own bundle ID (`app.keybreeze.Keybreeze`). Checks excluded/manual-only lists. Suspends during non-ASCII IME composition via `InputSourceMonitor.isASCIICompatible`.
+- **Inspired by:** Ghost Type's `GlobalKeyMonitor` pattern — event-tap based to avoid polling overhead while ensuring instant keystroke response.
+- **RULE:** `@MainActor`. Always use the convenience init `init(controller:)` which resolves shared singletons.
+- **RULE:** Does NOT own `CompletionController` — just feeds it `EditorState` via `editorStateChanged()`.
 
 ### `Keybreeze/LLM/LLMClient.swift`
 - **Role:** Single OpenAI-compatible HTTP client. Speaks `/v1/chat/completions` with SSE streaming. Builds request from prompt + optional systemPrompt.
@@ -105,28 +124,42 @@ This section is the **ground truth** — every file that exists, what it does, a
 - **RULE:** Do not add markdown, explanations, or conversational tone to the prompts — they are for a continuation engine, not a chatbot.
 
 ### `Keybreeze/UI/MenuBarContentView.swift`
-- **Role:** The menu bar dropdown content. A compact `VStack` with: Keybreeze header + status dots, "Open Typing Lab…" button, Backend/Model pickers, Active toggle, status line, Quit button.
-- **Contains:** `TypingLabWindowController` — manages opening/closing the standalone Typing Lab window (720×640, centered on screen).
+- **Role:** The menu bar dropdown content. A compact `VStack` with: daily completions count, Active toggle (switch), mode indicator (System/Playground), "Predict in all apps" toggle (system-wide mode), focused app display (green/orange dot + app name), Settings button, Backend/Model pickers, status indicator, suggestion preview, Quit button.
+- **Contains:** `SettingsWindowController` — manages opening/closing the standalone Settings window (700×520, centered on screen). Uses `AppKitLifecycle.showInDockAndCmdTab()`/`restoreToAccessory()` for Dock/Cmd+Tab presence while open.
+- **RULE:** `windowWillClose` must NOT cancel predictions or touch `SessionViewModel` — the session VM is an app-level singleton. Just release the window reference.
+- **RULE:** `restoreToAccessory()` is deferred to next runloop to prevent NSApp notification re-entrancy crashing during SwiftUI view teardown.
 - **RULE:** This is the ONLY dropdown content. Do NOT add Typing Lab views here. Do NOT change `.menuBarExtraStyle(.menu)`.
-- **RULE:** `openTypingLab()` stores `appState` and `sessionVM` as static references on `TypingLabWindowController` before opening the window — this shares state between menu and window.
-- **RULE:** `TypingLabWindowController` reuses the existing window if already open (brings to front).
+- **RULE:** System-wide mode toggle is only shown when `isSchedulerActive` is true (avoids clutter when predictions are off).
+- **RULE:** Focused app display reads from `sessionVM.focusedAppName`, `sessionVM.isSystemWidePaused`, `sessionVM.systemWidePauseReason` — these are backed by `SystemWidePredictor`'s published properties.
+- **RULE:** "Grant AX Access" button was removed from the menu bar — it now lives in Settings → General → Status.
+
+### `Keybreeze/UI/SettingsView.swift`
+- **Role:** Standalone settings window with two tabs: General and Typing Lab. Opens via `SettingsWindowController` (separate NSWindow, not the menu bar).
+- **General tab:** Active toggle, AX permission status indicator (live-refreshes via `onAppear`), Backend/Model pickers, daily stats.
+- **Typing Lab tab:** Embeds `TypingLabRootView` with full Playground, Apps, Diagnostics, History panels.
+- **RULE:** AX status uses `@State` + `.onAppear` only — no `Timer.publish` or `onReceive` subscribers that could fire during SwiftUI view teardown and crash.
+- **RULE:** The settings window is purely a UI surface. Opening/closing it must NOT affect the prediction engine or session state.
 
 ### `Keybreeze/UI/SessionViewModel.swift`
 - **Role:** The bridge between UI and prediction engine. Holds all published state for editor, prediction mode, model tuning, prompt editing, app gating, and diagnostics.
-- **Owns:** `CompletionController`, `PredictionHistory`.
+- **Owns:** `CompletionController`, `PredictionHistory`, `SystemWidePredictor` (lazy).
+- **Two modes:** Playground mode (default) — predictions driven by `draftText` in the Typing Lab text field. System-wide mode — predictions driven by `SystemWidePredictor` reading the focused app's text field via Accessibility API.
 - **Initialization:** Wires controller outputs via Combine. Sets `controller.onRecordPrediction` to add records to history. Sets up debounced Combine subscriptions for `$temperature`, `$topP`, `$tuningMaxWords`, `$customSystemPrompt`, `$styleNudge` → `updateControllerFromAppState()`.
-- **Methods:** `acceptSuggestion()`, `acceptWord()`, `syncTuningFromModel()`, `updateControllerFromAppState()`, `loadSettings()`, `saveSettings()`.
+- **Methods:** `acceptSuggestion()`, `acceptWord()`, `syncTuningFromModel()`, `updateControllerFromAppState()`, `loadSettings()`, `saveSettings()`, `startSystemWidePredictor()`, `stopSystemWidePredictor()`.
+- **Published properties added:** `systemWideMode` (toggle), plus computed `focusedAppBundleID`, `focusedAppName`, `isSystemWidePaused`, `systemWidePauseReason`.
 - **RULE:** Do NOT call `updateControllerFromAppState()` only in init — the Combine subscriptions keep parameters in sync automatically.
 - **RULE:** History records from `acceptSuggestion()`/`acceptWord()` include `currentTTFT` and `currentLatency` from the controller.
+- **RULE:** `isAccepting` flag suppresses `handleDraftChanged()` during programmatic text changes, preventing stale editor states from reaching the controller.
 
 ### `Keybreeze/UI/GhostTextModifier.swift`
 - **Role:** SwiftUI `ViewModifier` that overlays ghost text as grey/translucent text (`.secondary.opacity(0.45)`) on top of the text field. Supports correction state (red strikethrough + green suggestion).
 - **RULE:** No blend modes. No animations. Simple static overlay with proper padding to match the text field's inner inset.
+- **NOTE:** Currently only works inside Keybreeze's own Typing Lab text field. Does NOT ghost in third-party apps.
 - **RULE:** Ghost text ONLY shows when `isSchedulerActive` is true AND `suggestion` is non-empty OR `correctionState` is non-nil.
 
 ### `Keybreeze/UI/TypingLab/TypingLabRootView.swift`
 - **Role:** The full Typing Lab development environment. Four tabs: Playground, Apps, Diagnostics, History. Contains typing playground with ghost text, preset picker, and toggleable sections (Diag, Params, Prompts).
-- **RULE:** This view is opened in a standalone NSWindow by `TypingLabWindowController`, NOT in the menu bar.
+- **RULE:** This view is opened in a standalone NSWindow by `SettingsWindowController`, NOT in the menu bar.
 - **RULE:** All subviews receive `.environmentObject(appState).environmentObject(sessionVM)` explicitly — do not rely on implicit inheritance through the window hierarchy.
 
 ### `Keybreeze/UI/TypingLab/DiagnosticsPanelView.swift`
@@ -173,14 +206,13 @@ KeybreezeApp (@main)
 ### State Sharing
 - `AppState` and `SessionViewModel` are created once in `KeybreezeApp`
 - Menu bar dropdown receives them as `@EnvironmentObject`
-- When "Open Typing Lab…" is clicked, references are copied to `TypingLabWindowController.sharedAppState` and `.sharedSessionVM` before opening the window
-- The Typing Lab window shares the **same** state objects — changes in either view are reflected in both
+- The Settings window shares the **same** state objects — changes in either view are reflected in both
 
 ---
 
 ## Prediction Pipeline
 
-1. **`EditorState`** — text before/after caret from Typing Lab (or external editor later).
+1. **`EditorState`** — text before/after caret from Typing Lab (or external editor via `SystemWidePredictor`).
 2. **`CompletionController.editorStateChanged()`** — debounces (45ms), cancels previous prediction.
 3. **`PromptBuilder.continuationPrompt(context:styleNudge:maxWords:)`** — strict autocomplete instructions + style profile.
 4. **`PromptBuilder.systemPrompt(customPrompt:styleNudge:)`** — system instructions for the LLM.
@@ -227,22 +259,23 @@ struct LLMConfig: Codable, Equatable, Sendable {
 
 1. **Menu bar dropdown** (`MenuBarContentView`)
    - Compact (280pt wide) VStack with essential controls
-   - Backend/Model pickers, Active toggle, status
-   - "Open Typing Lab…" opens a separate window
+   - Backend/Model pickers, Active toggle, status, system-wide mode toggle
+   - Settings button opens a separate NSWindow
    - ".menu" style — NOT ".window"
 
-2. **Typing Lab window** (`TypingLabRootView` in a standalone NSWindow)
-   - 720×640, centered on screen
-   - Four tabs: Playground, Apps, Diagnostics, History
-   - Full development environment
-   - Opened via `TypingLabWindowController` (reuses window if already open)
+2. **Settings window** (`SettingsView` in a standalone NSWindow via `SettingsWindowController`)
+   - 700×520, centered on screen, uses `.regular` activation policy while open (Dock + Cmd+Tab)
+   - Two tabs: General, Typing Lab
+   - Typing Lab tab has Playground, Apps, Diagnostics, History
+   - Opens/closes without affecting prediction engine state
 
 ### Ghost Text Rendering
 
-- `GhostTextModifier` is a `ViewModifier` applied to the playgound TextField
+- `GhostTextModifier` is a `ViewModifier` applied to the playground TextField
 - Ghost text is grey/translucent (`.secondary.opacity(0.45)`) static overlay
 - No animations, no blend modes, no popups
 - Correction state: red strikethrough on incorrect word + green suggestion
+- **NOTE:** Ghost text does NOT appear in third-party apps — only in the Typing Lab playground. A floating overlay window is an unimplemented feature.
 
 ---
 
@@ -321,6 +354,7 @@ New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBui
 - Read this document and `BRIEF.md` before making changes.
 - Use `.menu` style for `MenuBarExtra` — never `.window`.
 - Pass `.environmentObject(appState).environmentObject(sessionVM)` explicitly to all TypingLab subviews.
+- Defer `restoreToAccessory()` to next runloop when called during window teardown.
 
 ### DO NOT:
 - Create new LLM provider files or protocols — `LLMClient` is the only client.
@@ -333,6 +367,9 @@ New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBui
 - Create new singletons — use `AccessibilityManager.shared` and `InputSourceMonitor.shared` only.
 - Split `LLMClient` into multiple files — the LLM layer is deliberately thin.
 - Remove `@MainActor` from actor-isolated classes.
+- Use `kAXValueAttribute` for text insertion (destroys rich text formatting).
+- Cancel predictions or touch SessionViewModel in `SettingsWindowController.windowWillClose`.
+- Use `Timer.publish` or `onReceive` subscribers that fire during SwiftUI view teardown.
 
 ### When Adding Features:
 1. Understand which file owns the responsibility (see File-by-File Reference).
