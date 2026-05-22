@@ -13,6 +13,7 @@
 		6618DA352FBF35190097FD61 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA342FBF35190097FD61 /* PromptBuilder.swift */; };
 		6618DA372FBF6DE90097FD61 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA362FBF6DE90097FD61 /* SettingsView.swift */; };
 		6618DA392FBF73D60097FD61 /* SystemWidePredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA382FBF73D50097FD61 /* SystemWidePredictor.swift */; };
+		663E12DF2FC0A50C00916081 /* SuggestionOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */; };
 		6676777E2FBDC7A400B8DA3A /* InputSourceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */; };
 		667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */; };
 		667677842FBDE1C700B8DA3A /* GhostTextModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */; };
@@ -41,6 +42,7 @@
 		6618DA342FBF35190097FD61 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
 		6618DA362FBF6DE90097FD61 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6618DA382FBF73D50097FD61 /* SystemWidePredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWidePredictor.swift; sourceTree = "<group>"; };
+		663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionOverlayWindow.swift; sourceTree = "<group>"; };
 		6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSourceMonitor.swift; sourceTree = "<group>"; };
 		6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostTextModifier.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 		A50000000000000000000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */,
 				6618DA362FBF6DE90097FD61 /* SettingsView.swift */,
 				667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */,
 				667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */,
@@ -244,6 +247,7 @@
 				A10000000000000000000001 /* KeybreezeApp.swift in Sources */,
 				6618DA372FBF6DE90097FD61 /* SettingsView.swift in Sources */,
 				667677962FBE2CDD00B8DA3A /* SessionViewModel.swift in Sources */,
+				663E12DF2FC0A50C00916081 /* SuggestionOverlayWindow.swift in Sources */,
 				667677982FBE2D1100B8DA3A /* AppState.swift in Sources */,
 				A10000000000000000000002 /* AppKitLifecycle.swift in Sources */,
 				667677942FBE2CCA00B8DA3A /* LLMClient.swift in Sources */,

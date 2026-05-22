@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import AppKit
+import Combine
 
 /// Bridges the Accessibility API text context into the CompletionController
 /// for system-wide prediction.
@@ -11,6 +12,10 @@ import AppKit
 ///
 /// Respects app gating (excluded/manual-only), IME composition safety,
 /// and avoids processing Keybreeze's own windows (Typing Lab handles its own).
+///
+/// Also owns the SuggestionOverlayWindowController — a floating, transparent,
+/// borderless window that displays ghost text after the cursor in the focused
+/// third-party app.
 @MainActor
 final class SystemWidePredictor {
     private let log = Logger(subsystem: "app.keybreeze", category: "system-wide")
@@ -20,6 +25,8 @@ final class SystemWidePredictor {
     private let controller: CompletionController
     private let accessibility: AccessibilityManager
     private let inputMonitor: InputSourceMonitor
+    private let overlay: SuggestionOverlayWindowController
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: Configuration
 
@@ -44,6 +51,16 @@ final class SystemWidePredictor {
     /// to skip redundant predictions when nothing changed.
     private var lastTextBeforeCursor: String = ""
     private var lastTextAfterCursor: String = ""
+
+    /// The last known cursor rect (AX coordinate space) — used to position the overlay
+    /// when a new suggestion arrives from the controller.
+    private var lastCursorRect: CGRect = .zero
+
+    /// The LAST VALID cursor rect we succeeded to fetch. When AX fails to resolve
+    /// a new cursor rect (common in Terminal, web views, Electron apps), we keep
+    /// using this cached value so the overlay still appears rather than getting
+    /// permanently stuck at `.zero`.
+    private var lastValidCursorRect: CGRect = .zero
 
     /// The last app bundle ID we saw — used to detect app switches.
     private var lastAppBundleID: String?
@@ -78,6 +95,22 @@ final class SystemWidePredictor {
         self.controller = controller
         self.accessibility = accessibility
         self.inputMonitor = inputMonitor
+        self.overlay = SuggestionOverlayWindowController()
+
+        // Observe suggestion changes from the controller and show/hide overlay.
+        controller.$suggestion
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] suggestion in
+                guard let self else { return }
+                if suggestion.isEmpty {
+                    self.log.debug("Overlay: suggestion cleared → hiding")
+                    self.overlay.hide()
+                } else {
+                    self.log.debug("Overlay: suggestion received '\(suggestion)' → showing at cursorRect=(\(self.lastCursorRect.origin.x), \(self.lastCursorRect.origin.y), \(self.lastCursorRect.size.width)x\(self.lastCursorRect.size.height))")
+                    self.overlay.show(text: suggestion, at: self.lastCursorRect)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Convenience init using the shared AccessibilityManager and InputSourceMonitor.
@@ -93,33 +126,33 @@ final class SystemWidePredictor {
     // MARK: Lifecycle
 
     func start() {
-        guard pollTask == nil else { return }
-        log.info("System-wide predictor started")
+        guard pollTask == nil else {
+            log.debug("start() called but already running")
+            return
+        }
+        log.info("System-wide predictor starting...")
         resetState()
 
         // 1. Start CGEventTap for instant keystroke-based triggering.
-        //    This is the primary trigger — captures keyDown events system-wide,
-        //    debounces, then reads AX context and feeds the controller.
         installEventTap()
 
-        // 2. Start idle safety poll (500ms) to catch non-keyboard changes
-        //    like paste, undo, mouse clicks, auto-correct, etc.
+        // 2. Start idle safety poll (500ms).
         pollTask = Task { [weak self] in
             await self?.idlePollLoop()
         }
     }
 
     func stop() {
-        // Remove event tap
+        log.info("System-wide predictor stopping")
         if let tap = eventTap {
             CFMachPortInvalidate(tap)
             eventTap = nil
         }
-        // Cancel tasks
         pollTask?.cancel()
         pollTask = nil
         debounceTask?.cancel()
         debounceTask = nil
+        overlay.hide()
         resetState()
         log.info("System-wide predictor stopped")
     }
@@ -127,6 +160,8 @@ final class SystemWidePredictor {
     private func resetState() {
         lastTextBeforeCursor = ""
         lastTextAfterCursor = ""
+        lastCursorRect = .zero
+        lastValidCursorRect = .zero
         lastAppBundleID = nil
         hasActiveContext = false
         isPaused = false
@@ -138,11 +173,6 @@ final class SystemWidePredictor {
     // MARK: — Event Tap (Primary Trigger)
 
     /// Installs a CGEventTap that captures keyDown events system-wide.
-    /// On each keystroke, we start a debounce timer, then read AX context
-    /// and feed the controller.
-    ///
-    /// This is inspired by Ghost Type's GlobalKeyMonitor pattern — it avoids
-    /// polling overhead and gives instant response to keystrokes.
     private func installEventTap() {
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
 
@@ -152,13 +182,13 @@ final class SystemWidePredictor {
                 return Unmanaged.passUnretained(event)
             }
 
-            // Re-bridge self from the refcon
             let predictor = Unmanaged<SystemWidePredictor>.fromOpaque(refcon).takeUnretainedValue()
             predictor.handleKeyDown()
             return Unmanaged.passUnretained(event)
         }
 
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+
         eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -169,26 +199,22 @@ final class SystemWidePredictor {
         )
 
         guard let eventTap else {
-            log.warning("Failed to create event tap — predictions will rely on idle polling only")
+            log.warning("⚠️ Failed to create event tap! Run loop polling will be used as fallback. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
             return
         }
 
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        log.info("Event tap installed for system-wide keystroke capture")
+        log.info("✅ Event tap installed for system-wide keystroke capture")
     }
 
     /// Called from the CGEventTap callback on every keyDown event.
-    /// Runs on the main actor via the event tap's run loop.
     private func handleKeyDown() {
-        // Quick block checks before debouncing
         guard shouldProcessCurrentApp() else { return }
 
-        // Debounce: cancel previous, schedule new
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             do {
-                // 40ms debounce after last keystroke (matches CompletionController's 45ms)
                 try await Task.sleep(for: .milliseconds(40))
                 await self?.readAndPredict()
             } catch {
@@ -199,12 +225,11 @@ final class SystemWidePredictor {
 
     // MARK: — Idle Poll (Safety Net)
 
-    /// Polls every 500ms to catch non-keyboard text changes (paste, undo, mouse clicks).
-    /// Returns early if no app/text field is focused or nothing changed.
+    /// Polls every 500ms to catch non-keyboard text changes.
     private func idlePollLoop() async {
+        log.debug("Idle poll loop started")
         let idleInterval: UInt64 = 500_000_000  // 500ms
         while !Task.isCancelled {
-            // Only poll if we're not in the middle of a keystroke debounce
             if debounceTask == nil {
                 await readAndPredict()
             }
@@ -218,6 +243,7 @@ final class SystemWidePredictor {
     private func readAndPredict() async {
         // 1. Check focused app
         guard let bundleID = accessibility.focusedAppBundleID() else {
+            log.debug("No focused app bundle ID")
             handleNoFocus()
             return
         }
@@ -227,8 +253,8 @@ final class SystemWidePredictor {
 
         // 2. Gating checks
         guard shouldProcessApp(bundleID) else {
-            // If we switched away from a text field, clear the suggestion
             if bundleID != lastAppBundleID {
+                log.debug("App switch to blocked app '\(bundleID)' — clearing suggestion")
                 controller.suggestion = ""
                 hasActiveContext = false
             }
@@ -237,6 +263,7 @@ final class SystemWidePredictor {
 
         // 3. IME safety
         guard inputMonitor.isASCIICompatible else {
+            log.debug("IME composition active — pausing")
             setPaused(reason: "IME composition active")
             return
         }
@@ -245,41 +272,136 @@ final class SystemWidePredictor {
 
         // 4. Detect app switch
         if bundleID != lastAppBundleID {
+            log.debug("App switched to '\(bundleID)' — resetting context")
             lastAppBundleID = bundleID
             lastTextBeforeCursor = ""
             lastTextAfterCursor = ""
             hasActiveContext = false
         }
 
-        // 5. Read text context
+        // 5. Read text context via AX
+        log.debug("Reading AX text context from '\(bundleID)'...")
         guard let context = accessibility.getTextContext(maxChars: 800) else {
+            log.debug("AX getTextContext returned nil — no text field focused or context unavailable")
             if hasActiveContext {
+                log.debug("Lost active text context — clearing suggestion")
                 controller.suggestion = ""
+                overlay.hide()
                 hasActiveContext = false
             }
             return
         }
+        log.debug("AX context: prefix='\(context.prefix.suffix(60))' suffix='\(context.suffix.prefix(20))' cursorRect=(\(context.cursorRect.origin.x), \(context.cursorRect.origin.y), \(context.cursorRect.size.width)x\(context.cursorRect.size.height))")
 
         // 6. Check for meaningful change
         guard context.prefix != lastTextBeforeCursor || context.suffix != lastTextAfterCursor else {
-            return // Nothing changed
+            log.debug("Text unchanged — skipping prediction")
+            return
         }
 
         lastTextBeforeCursor = context.prefix
         lastTextAfterCursor = context.suffix
         hasActiveContext = true
 
-        // 7. Feed into prediction engine
+        // 7. Resolve cursor rect for overlay positioning
+        resolveCursorRect(from: context)
+
+        // 8. Feed into prediction engine
+        log.debug("Feeding EditorState to controller (prefix length=\(context.prefix.count))")
         controller.editorStateChanged(EditorState(
             textBeforeCursor: context.prefix,
             textAfterCursor: context.suffix
         ))
     }
 
+    /// Resolves the best cursor rect to use for overlay positioning, using
+    /// a 4-tier fallback chain when AX cursor rect extraction fails.
+    private func resolveCursorRect(from context: TextContext) {
+        let axCursorRect = context.cursorRect
+
+        if axCursorRect.width >= 0, axCursorRect.height > 0 {
+            // Tier 1: Valid rect from AX — cache and use
+            log.debug("Cursor rect: Tier 1 (AX embedded) — (\(axCursorRect.origin.x), \(axCursorRect.origin.y), \(axCursorRect.size.width)x\(axCursorRect.size.height))")
+            lastCursorRect = axCursorRect
+            lastValidCursorRect = axCursorRect
+        } else if let independentRect = accessibility.getCursorRect(),
+                  independentRect.width >= 0, independentRect.height > 0 {
+            // Tier 2: Independent fetch succeeded
+            log.debug("Cursor rect: Tier 2 (AX independent retry) — (\(independentRect.origin.x), \(independentRect.origin.y), \(independentRect.size.width)x\(independentRect.size.height))")
+            lastCursorRect = independentRect
+            lastValidCursorRect = independentRect
+        } else if lastValidCursorRect != .zero {
+            // Tier 3: Use last known valid position
+            log.debug("Cursor rect: Tier 3 (cached) — (\(self.lastValidCursorRect.origin.x), \(self.lastValidCursorRect.origin.y), \(self.lastValidCursorRect.size.width)x\(self.lastValidCursorRect.size.height))")
+            lastCursorRect = self.lastValidCursorRect
+        } else {
+            // Tier 4: Compute from focused window
+            let computed = computeFallbackCursorRect()
+            log.debug("Cursor rect: Tier 4 (computed from window) — (\(computed.origin.x), \(computed.origin.y), \(computed.size.width)x\(computed.size.height))")
+            lastCursorRect = computed
+        }
+    }
+
+    /// Computes a reasonable fallback cursor rect when AX cursor resolution fails.
+    /// Positions the overlay roughly in the center-left area of the focused window,
+    /// which is where text input typically appears.
+    private func computeFallbackCursorRect() -> CGRect {
+        guard let appBundleID = accessibility.focusedAppBundleID() else {
+            return CGRect(x: 100, y: 200, width: 2, height: 16)
+        }
+
+        for app in NSWorkspace.shared.runningApplications
+        where app.bundleIdentifier == appBundleID {
+            let pidRef = AXUIElementCreateApplication(app.processIdentifier)
+            var windowValue: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(
+                pidRef,
+                kAXMainWindowAttribute as CFString,
+                &windowValue
+            )
+            if result == .success, let windowElement = windowValue {
+                var positionValue: CFTypeRef?
+                var sizeValue: CFTypeRef?
+                let posResult = AXUIElementCopyAttributeValue(
+                    windowElement as! AXUIElement,
+                    kAXPositionAttribute as CFString,
+                    &positionValue
+                )
+                let sizeResult = AXUIElementCopyAttributeValue(
+                    windowElement as! AXUIElement,
+                    kAXSizeAttribute as CFString,
+                    &sizeValue
+                )
+
+                if posResult == .success, sizeResult == .success,
+                   let posValue = positionValue, let szValue = sizeValue {
+                    var position = CGPoint.zero
+                    var size = CGSize.zero
+                    if AXValueGetValue(posValue as! AXValue, .cgPoint, &position),
+                       AXValueGetValue(szValue as! AXValue, .cgSize, &size) {
+                        let caretX = position.x + size.width * 0.2
+                        let caretY = position.y + size.height * 0.3
+                        return CGRect(x: caretX, y: caretY, width: 2, height: 16)
+                    }
+                }
+            }
+        }
+
+        if let screen = NSScreen.main {
+            let frame = screen.frame
+            return CGRect(
+                x: frame.midX - 200,
+                y: frame.midY + 100,
+                width: 2,
+                height: 16
+            )
+        }
+
+        return CGRect(x: 100, y: 200, width: 2, height: 16)
+    }
+
     // MARK: — App Gating
 
-    /// Quick check that runs in the hot path (keyDown callback).
-    /// Updates paused state but doesn't clear suggestions.
     private func shouldProcessCurrentApp() -> Bool {
         guard let bundleID = accessibility.focusedAppBundleID() else {
             handleNoFocus()
@@ -289,23 +411,38 @@ final class SystemWidePredictor {
         focusedAppBundleID = bundleID
         focusedAppName = appName(for: bundleID)
 
+        if bundleID == "app.keybreeze.Keybreeze" {
+            log.debug("Keydown in Keybreeze itself — skipping")
+            setPaused(reason: "Keybreeze focused")
+            return false
+        }
+
+        if excludedBundleIDs.contains(bundleID) {
+            log.debug("Keydown in excluded app '\(bundleID)' — skipping")
+            setPaused(reason: "Excluded app")
+            return false
+        }
+
+        if manualOnlyBundleIDs.contains(bundleID) && !predictInManualOnly {
+            log.debug("Keydown in manual-only app '\(bundleID)' — skipping")
+            setPaused(reason: "Manual-only app")
+            return false
+        }
+
         return shouldProcessApp(bundleID)
     }
 
     private func shouldProcessApp(_ bundleID: String) -> Bool {
-        // Skip Keybreeze itself
         if bundleID == "app.keybreeze.Keybreeze" {
             setPaused(reason: "Keybreeze focused")
             return false
         }
 
-        // Check excluded
         if excludedBundleIDs.contains(bundleID) {
             setPaused(reason: "Excluded app")
             return false
         }
 
-        // Check manual-only
         if manualOnlyBundleIDs.contains(bundleID) && !predictInManualOnly {
             setPaused(reason: "Manual-only app")
             return false
@@ -321,11 +458,15 @@ final class SystemWidePredictor {
         focusedAppName = nil
         lastAppBundleID = nil
         if hasActiveContext {
+            log.debug("No focus — clearing suggestion and hiding overlay")
             controller.suggestion = ""
+            overlay.hide()
             hasActiveContext = false
         }
         lastTextBeforeCursor = ""
         lastTextAfterCursor = ""
+        lastCursorRect = .zero
+        lastValidCursorRect = .zero
         setPaused(reason: "No app focused")
     }
 
@@ -355,5 +496,9 @@ final class SystemWidePredictor {
         }
         pollTask?.cancel()
         debounceTask?.cancel()
+        Task { @MainActor in
+            overlay.hide()
+        }
+        cancellables.removeAll()
     }
 }

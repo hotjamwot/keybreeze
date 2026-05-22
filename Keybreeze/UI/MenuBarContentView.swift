@@ -9,63 +9,31 @@ struct MenuBarContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 1. Daily completions statistic
-            Text("[\(sessionVM.dailyAcceptedCount)] keys breezed today")
+            Text("\(sessionVM.dailyAcceptedCount) keys breezed today")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
 
-            // 2. Active toggle + mode indicator
-            HStack(spacing: 8) {
-                Toggle("Active", isOn: $sessionVM.isSchedulerActive)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-
-                if sessionVM.isSchedulerActive {
-                    if sessionVM.systemWideMode {
-                        Text("System")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    } else {
-                        Text("Playground")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+            // 2. Active toggle button
+            Button(action: {
+                sessionVM.isSchedulerActive.toggle()
+            }) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(sessionVM.isSchedulerActive ? Color.green : Color.orange)
+                        .frame(width: 8, height: 8)
+                    Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
+                        .font(.caption2)
+                        .foregroundStyle(sessionVM.isSchedulerActive ? .green : .orange)
                 }
-
-                Spacer()
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 3. System-wide mode toggle (only when active)
-            if sessionVM.isSchedulerActive {
-                Toggle(isOn: $sessionVM.systemWideMode) {
-                    Label("Predict in all apps", systemImage: "app.connected.to.app.below.fill")
-                        .font(.caption)
-                }
-                .toggleStyle(.switch)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-            }
-
-            // 4. Focused app info (when system-wide is active)
-            if sessionVM.isSchedulerActive && sessionVM.systemWideMode,
-               let appName = sessionVM.focusedAppName {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(sessionVM.isSystemWidePaused ? Color.orange : Color.green)
-                        .frame(width: 6, height: 6)
-                    Text(sessionVM.isSystemWidePaused ? sessionVM.systemWidePauseReason : appName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-            }
-
-            // 5. Settings
+            // 3. Focused app info (removed - always system-wide when active)
+            // 4. Settings
             Button {
                 openSettings()
             } label: {
@@ -88,13 +56,6 @@ struct MenuBarContentView: View {
             .pickerStyle(.menu)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-
-            // 7. Model selector
-            Text("Model")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 2)
 
             if appState.availableModels.isEmpty {
                 Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
@@ -125,8 +86,8 @@ struct MenuBarContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 9. Suggestion preview (when system-wide and a suggestion exists)
-            if sessionVM.isSchedulerActive && sessionVM.systemWideMode && !sessionVM.suggestion.isEmpty {
+            // 9. Suggestion preview (when active and a suggestion exists)
+            if sessionVM.isSchedulerActive && !sessionVM.suggestion.isEmpty {
                 HStack(spacing: 4) {
                     Text("→")
                         .font(.caption)

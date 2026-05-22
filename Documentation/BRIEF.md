@@ -222,14 +222,15 @@ Backend selected via segmented control in the menu bar. Swapping backends auto-m
 | 2 — Prediction Engine | ✅ |
 | 2.5 — Ghost Text + Tuning | ✅ |
 | Typing Lab / Feel Engineering | ✅ |
-| 3 — App Integration for all Mac apps | 🔄 Needs work |
-| 4 — Tab Accept System (word-by-word via Tab) | ✅ |
-| 5+ — Polish, Style Memory, Expansion | Later |
+| 3 — App Integration for all Mac apps | ✅ |
+| 4 — Ghost Overlay in External Apps | ✅ |
+| 5 — Tab Accept System (word-by-word via Tab) | ✅ |
+| 6+ — Polish, Style Memory, Expansion | Later |
 
 **Current issues:**
 1. Settings window close still intermittently crashes (ViewBridge error, re-entrancy during teardown)
-2. Ghost text only shows in Typing Lab playground — not in third-party apps
-3. System-wide text insertion works via keyboard event synthesis but lacks visual prediction display in external apps
+2. ~~Ghost text only shows in Typing Lab playground — not in third-party apps~~ → ✅ Resolved. Floating transparent overlay (`SuggestionOverlayWindowController`) positioned at the caret via AX API now shows ghost predictions in the focused third-party app.
+3. ~~System-wide text insertion works via keyboard event synthesis but lacks visual prediction display in external apps~~ → ✅ Resolved. Ghost overlay appears automatically when a suggestion arrives, positioned directly after the caret.
 
 ---
 

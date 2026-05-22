@@ -498,7 +498,7 @@ The following is the definitive checklist of features and behaviors the app must
 
 | # | Outcome | Section | Status | Notes |
 |---|---------|---------|--------|-------|
-| 1 | **Invisible ghost text overlay** — ghost text appears inline after caret, same baseline, grey/translucent, no popup | §4 Prediction Display | 🔄 Partial | Works in Typing Lab playground (GhostTextModifier). Does NOT appear in third-party apps — requires floating overlay window |
+| 1 | **Invisible ghost text overlay** — ghost text appears inline after caret, same baseline, grey/translucent, no popup | §4 Prediction Display | ✅ | Works in Typing Lab playground (GhostTextModifier) AND third-party apps via `SuggestionOverlayWindowController` floating overlay |
 | 2 | **Streaming prediction display** — only show after first full word or confidence threshold, avoid "dancing" | §10 Streaming Behavior | 🔄 Partial | Streaming works in CompletionController, but threshold gating is not implemented — all tokens display immediately |
 | 3 | **Tab accepts full prediction** — inserts instantly, moves caret to end, zero-latency feel | §5 Tab Accept | ✅ | Implemented in SessionViewModel.acceptSuggestion() and global/local event monitors |
 | 4 | **Word-by-word acceptance (Right Arrow)** — accept next word only, remaining ghost stays | §5 Right Arrow | ❌ Not implemented | Only Tab acceptance (full suggestion) is implemented. Right Arrow acceptance is future work |
@@ -507,7 +507,7 @@ The following is the definitive checklist of features and behaviors the app must
 | 7 | **Corrected word acceptance (Tab/ESC)** — Tab accepts correction, ESC rejects, continued typing dismisses | §7 Correction | ❌ Not implemented | No correction state processing in SessionViewModel |
 | 8 | **Keystroke response < 8ms** — every keypress must debounce, cancel previous, start new prediction | §2 Timing | ✅ | 45ms debounce in CompletionController, aggressive cancellation |
 | 9 | **Prediction appears within 40-140ms** — TTFT + total time targets | §3 Generation Timing | 🔄 Partial | Latency tracking is implemented (TTFT, total latency) but whether targets are met depends on the model and backend |
-| 10 | **System-wide prediction** — read text from any focused app's text field via AX API | §1 Lifecycle | 🔄 Partial | SystemWidePredictor reads context via AccessibilityManager. Predictions feed into CompletionController. Ghost text display is Typing Lab only |
+| 10 | **System-wide prediction** — read text from any focused app's text field via AX API | §1 Lifecycle | ✅ | SystemWidePredictor reads context via AccessibilityManager. Predictions feed into CompletionController. Ghost overlay appears in the focused app via SuggestionOverlayWindowController |
 | 11 | **Tab acceptance in any app** — insert accepted prediction into external app's text field | §5 Tab Accept | ✅ | Via global event monitor + AccessibilityManager.insertText(). Uses keyboard event synthesis to preserve formatting |
 | 12 | **App gating** — exclude/manual-only lists respected during system-wide prediction | §1 Lifecycle | ✅ | excludedBundleIDs + manualOnlyBundleIDs logic in SystemWidePredictor.shouldProcessApp() |
 | 13 | **Stable UI — no jumps, resizes, animations, or modals** | §9 UI Stability | ✅ | GhostTextModifier is pure overlay, no animations. Menu bar is static. |
@@ -516,4 +516,4 @@ The following is the definitive checklist of features and behaviors the app must
 | 16 | **Acceptance history** — every prediction recorded with resolution, TTFT, total time | §5 Behavior | ✅ | PredictionHistory ring buffer (200 records) with full metadata |
 | 17 | **Dock + Cmd+Tab when settings window is open** — regular activation policy while window visible | — | ✅ | AppKitLifecycle.showInDockAndCmdTab()/restoreToAccessory() |
 | 18 | **Settings window close does not hang** — closing window must not cancel predictions or crash | — | 🔄 Partial | Mitigated (deferred restoreToAccessory, removed onReceive subscribers) but ViewBridge error still occurs intermittently |
-| 19 | **Ghost overlay for third-party apps** — floating window positioned over external text field showing prediction | §4 Display | ❌ Not implemented | This is the critical missing feature. Requires a floating NSWindow with GhostTextModifier positioned above the caret in any app |
+| 19 | **Ghost overlay for third-party apps** — floating window positioned over external text field showing prediction | §4 Display | ✅ | Implemented via `SuggestionOverlayWindowController` — borderless transparent NSWindow at popUpMenu level, positioned via AX cursor rect, click-through, no focus steal |

@@ -29,6 +29,7 @@ final class AccessibilityManager {
     // MARK: - Text Context Extraction
 
     /// Extracts text context using AX API with fallbacks.
+    /// Returns the text before/after cursor AND the cursor rect for overlay positioning.
     func getTextContext(maxChars: Int = 800) -> TextContext? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let pid = app.processIdentifier
@@ -50,9 +51,14 @@ final class AccessibilityManager {
             // Filter out weak/invisible text (zero-width chars, etc.)
             let filtered = filterWeakText(before)
             guard !filtered.isEmpty else { return nil }
+
+            // Get cursor rect for overlay positioning
+            let cursorRect = getCursorRect(focused) ?? .zero
+
             return TextContext(
                 prefix: String(filtered.suffix(maxChars)),
-                suffix: after
+                suffix: after,
+                cursorRect: cursorRect
             )
         }
 
@@ -163,6 +169,61 @@ final class AccessibilityManager {
         var range = CFRange()
         guard AXValueGetValue(axValue as! AXValue, .cfRange, &range) else { return nil }
         return NSRange(location: range.location, length: range.length)
+    }
+
+    /// Get the cursor bounding rectangle via kAXBoundsForRangeParameterizedAttribute.
+    /// Returns nil if the element doesn't support it (e.g. password fields, non-text elements).
+    /// The returned rect uses AX coordinate space (origin top-left of main screen).
+    func getCursorRect() -> CGRect? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let pid = app.processIdentifier
+        let pidRef = AXUIElementCreateApplication(pid)
+        guard let rawFocused = getFocusedElement(from: pidRef) else { return nil }
+        let focused = resolvedFocusedElement(from: rawFocused)
+        guard !isSecureField(focused) else { return nil }
+
+        guard let range = selectedRange(from: focused) else { return nil }
+
+        var cfRange = CFRange(location: range.location, length: 0)
+        guard let rangeValue = AXValueCreate(.cfRange, &cfRange) else { return nil }
+
+        var bounds: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            focused,
+            kAXBoundsForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &bounds
+        )
+
+        guard result == .success, let boundsValue = bounds else { return nil }
+
+        var rect = CGRect.zero
+        guard AXValueGetValue(boundsValue as! AXValue, .cgRect, &rect), rect.height > 0 else { return nil }
+
+        return rect
+    }
+
+    /// Get cursor rect from a specific AX element at a given caret offset.
+    private func getCursorRect(_ element: AXUIElement) -> CGRect? {
+        guard let range = selectedRange(from: element) else { return nil }
+
+        var cfRange = CFRange(location: range.location, length: 0)
+        guard let rangeValue = AXValueCreate(.cfRange, &cfRange) else { return nil }
+
+        var bounds: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXBoundsForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &bounds
+        )
+
+        guard result == .success, let boundsValue = bounds else { return nil }
+
+        var rect = CGRect.zero
+        guard AXValueGetValue(boundsValue as! AXValue, .cgRect, &rect), rect.height > 0 else { return nil }
+
+        return rect
     }
 
     /// Filter out weak/invisible text (zero-width characters, etc.)
@@ -330,4 +391,7 @@ final class AccessibilityManager {
 struct TextContext {
     let prefix: String
     let suffix: String
+    /// Cursor bounding rectangle in AX coordinate space (top-left origin of main screen).
+    /// Use this to position the ghost overlay window.
+    let cursorRect: CGRect
 }

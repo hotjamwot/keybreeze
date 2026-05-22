@@ -48,9 +48,7 @@ final class SessionViewModel: ObservableObject {
             if isSchedulerActive {
                 controller.start()
                 installTabInterceptors()
-                if systemWideMode {
-                    startSystemWidePredictor()
-                }
+                startSystemWidePredictor()
             } else {
                 controller.stop()
                 stopSystemWidePredictor()
@@ -58,19 +56,6 @@ final class SessionViewModel: ObservableObject {
                 suggestion = ""
                 currentLatency = nil
                 currentTTFT = nil
-            }
-        }
-    }
-
-    /// When true, predictions come from the system-wide Accessibility API poller
-    /// instead of the Typing Lab playground's draftText.
-    @Published var systemWideMode = false {
-        didSet {
-            guard isSchedulerActive else { return }
-            if systemWideMode {
-                startSystemWidePredictor()
-            } else {
-                stopSystemWidePredictor()
             }
         }
     }
@@ -369,14 +354,12 @@ final class SessionViewModel: ObservableObject {
 
     /// The focused app bundle ID from the system-wide predictor (if active).
     var focusedAppBundleID: String? {
-        guard systemWideMode else { return nil }
-        return systemWidePredictor.focusedAppBundleID
+        systemWidePredictor.focusedAppBundleID
     }
 
     /// The focused app display name from the system-wide predictor (if active).
     var focusedAppName: String? {
-        guard systemWideMode else { return nil }
-        return systemWidePredictor.focusedAppName
+        systemWidePredictor.focusedAppName
     }
 
     /// Whether the system-wide predictor is paused.

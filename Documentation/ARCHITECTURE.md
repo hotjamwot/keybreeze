@@ -19,13 +19,13 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase 2 — Prediction Engine | ✅ |
 | Phase 2.5 — Ghost Text + Tuning | ✅ |
 | Typing Lab / Feel Engineering | ✅ |
-| Phase 3 — System-Wide Integration (AX context reading + Tab accept) | 🔄 Needs work |
-| Phase 4 — Ghost Overlay in External Apps | ❌ Not implemented |
+| Phase 3 — System-Wide Integration (AX context reading + Tab accept) | ✅ |
+| Phase 4 — Ghost Overlay in External Apps | ✅ |
 | Phase 5+ — Polish, Style Memory, Expansion | Later |
 
 **Known issues:**
 1. **Settings window close crash** — the app hangs when closing the settings window. Root cause was re-entrancy from `setActivationPolicy()` triggering NSApp notifications during SwiftUI view teardown. Mitigated by deferring `restoreToAccessory()` to the next runloop, but the underlying ViewBridge error ("Modifying state during view update") still occurs intermittently.
-2. **Ghost text in external apps not implemented** — predictions feed into the engine from other apps' text fields (via AX API), but: (a) predictions only display in the Typing Lab playground, not as an overlay on external apps; (b) Tab acceptance inserts text via keyboard event synthesis, but the user cannot see what will be typed before accepting. A floating overlay window is required for inline ghost text in third-party apps.
+2. ~~Ghost text in external apps not implemented~~ — ✅ Resolved. Floating transparent overlay window (`SuggestionOverlayWindowController`) positioned at the caret via AX API `kAXBoundsForRangeParameterizedAttribute` now shows ghost predictions in the focused third-party app.
 
 ---
 
@@ -36,7 +36,7 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | `Keybreeze/App/` | `@main` entry (`KeybreezeApp.swift`), AppKit activation policy (`showInDockAndCmdTab`/`restoreToAccessory`), termination cleanup |
 | `Keybreeze/Core/` | `AppState`, `CompletionController`, `PredictionHistory`, `PredictionMode`, `ModelOption`, `AppSettings`, `AccessibilityManager`, `InputSourceMonitor`, `SystemWidePredictor` |
 | `Keybreeze/LLM/` | `LLMClient` (singleton HTTP client), `PromptBuilder`, `LLMConfig`, `LLMBackend` |
-| `Keybreeze/UI/` | `MenuBarContentView`, `SessionViewModel`, `GhostTextModifier`, `SettingsView`, `TypingLab/` subfolder |
+| `Keybreeze/UI/` | `MenuBarContentView`, `SessionViewModel`, `GhostTextModifier`, `SettingsView`, `SuggestionOverlayWindow`, `TypingLab/` subfolder |
 | `Keybreeze/Utils/` | `KeybreezeLatencyLogger` |
 
 ---
@@ -90,9 +90,10 @@ This section is the **ground truth** — every file that exists, what it does, a
 - **RULE:** This is the single source of truth for persisted settings. `SessionViewModel.loadSettings()` reads from it.
 
 ### `Keybreeze/Core/AccessibilityManager.swift`
-- **Role:** Singleton for Accessibility API: permission check/request, text context extraction (`getTextContext`), text insertion (`insertText`), app info (`focusedAppBundleID`). Default excluded/manual-only bundle IDs.
+- **Role:** Singleton for Accessibility API: permission check/request, text context extraction (`getTextContext`), cursor rect extraction (`getCursorRect`), text insertion (`insertText`), app info (`focusedAppBundleID`). Default excluded/manual-only bundle IDs.
 - **Text insertion:** Uses `insertViaKeyboardEvents()` — synthesizes CGEvent keyboard events per-character via `keyboardSetUnicodeString`. This preserves rich text formatting and editor state (Obsidian, web views, etc.). Falls back to clipboard-based insertion.
-- **RULE:** All methods are `@MainActor`. `getTextContext` returns `TextContext?`. `insertText` uses keyboard event synthesis with clipboard fallback.
+- **Cursor rect:** `getCursorRect()` uses `kAXBoundsForRangeParameterizedAttribute` to get the caret's bounding rect in AX coordinate space (top-left origin). Used by `SuggestionOverlayWindowController` to position the ghost overlay.
+- **RULE:** All methods are `@MainActor`. `getTextContext` returns `TextContext?` (includes `cursorRect`). `insertText` uses keyboard event synthesis with clipboard fallback.
 - **RULE:** Do NOT read/set `kAXValueAttribute` for insertion — this destroys formatting in rich editors.
 
 ### `Keybreeze/Core/InputSourceMonitor.swift`
@@ -101,10 +102,11 @@ This section is the **ground truth** — every file that exists, what it does, a
 
 ### `Keybreeze/Core/SystemWidePredictor.swift`
 - **Role:** Bridges the Accessibility API text context into the `CompletionController` for system-wide prediction. Uses two complementary trigger mechanisms: a CGEventTap (captures keyDown events system-wide for instant response) and a 500ms idle safety poll (catches paste/undo/mouse changes).
-- **Owns:** CGEventTap lifecycle, debounce timer, app-gating logic.
+- **Owns:** CGEventTap lifecycle, debounce timer, app-gating logic, **`SuggestionOverlayWindowController`** (floating ghost overlay window).
 - **Configuration:** `excludedBundleIDs`, `manualOnlyBundleIDs`, `predictInManualOnly`.
 - **Published properties:** `focusedAppBundleID`, `focusedAppName`, `isPaused`, `pauseReason`.
 - **Lifecycle:** `start()` / `stop()` — called by `SessionViewModel` when `systemWideMode` is toggled.
+- **Overlay wiring:** A Combine subscription on `controller.$suggestion` shows/hides the overlay. When `suggestion` is non-empty and `lastCursorRect` is valid, the overlay displays the suggestion text positioned at the cursor. When suggestion is cleared, the overlay hides.
 - **App gating:** Skips Keybreeze's own bundle ID (`app.keybreeze.Keybreeze`). Checks excluded/manual-only lists. Suspends during non-ASCII IME composition via `InputSourceMonitor.isASCIICompatible`.
 - **Inspired by:** Ghost Type's `GlobalKeyMonitor` pattern — event-tap based to avoid polling overhead while ensuring instant keystroke response.
 - **RULE:** `@MainActor`. Always use the convenience init `init(controller:)` which resolves shared singletons.
@@ -154,8 +156,17 @@ This section is the **ground truth** — every file that exists, what it does, a
 ### `Keybreeze/UI/GhostTextModifier.swift`
 - **Role:** SwiftUI `ViewModifier` that overlays ghost text as grey/translucent text (`.secondary.opacity(0.45)`) on top of the text field. Supports correction state (red strikethrough + green suggestion).
 - **RULE:** No blend modes. No animations. Simple static overlay with proper padding to match the text field's inner inset.
-- **NOTE:** Currently only works inside Keybreeze's own Typing Lab text field. Does NOT ghost in third-party apps.
+- **NOTE:** Works inside Keybreeze's own Typing Lab text field. For third-party apps, see `SuggestionOverlayWindowController` (floating overlay window).
 - **RULE:** Ghost text ONLY shows when `isSchedulerActive` is true AND `suggestion` is non-empty OR `correctionState` is non-nil.
+
+### `Keybreeze/UI/SuggestionOverlayWindow.swift`
+- **Role:** `SuggestionOverlayWindowController` — manages a borderless, transparent, floating NSWindow that displays ghost text after the caret in the focused third-party app.
+- **Dependencies:** Used only by `SystemWidePredictor` (which owns the controller and wires it to `CompletionController.$suggestion`).
+- **Positioning:** Uses AX cursor rect from `AccessibilityManager.getTextContext().cursorRect` (via `kAXBoundsForRangeParameterizedAttribute`). Converts from AX coordinate space (top-left origin) to NSScreen coordinate space (bottom-left origin).
+- **Visual style:** Grey/translucent ghost text (`.secondary.opacity(0.45)`, matching `GhostTextModifier`). Transparent background, no border, no shadow. Click-through (`ignoresMouseEvents = true`). No focus steal (`orderFrontRegardless()`).
+- **RULE:** `@MainActor`. Must be created on the main actor. All window operations are main-actor-only.
+- **RULE:** Only show when `cursorRect` is valid (width >= 0, height > 0). Hide immediately when suggestion is cleared.
+- **NOTE:** The `InlineGhostTextView` SwiftUI view renders only the ghost suggestion — the committed text is already in the host app's text field, so we don't duplicate it.
 
 ### `Keybreeze/UI/TypingLab/TypingLabRootView.swift`
 - **Role:** The full Typing Lab development environment. Four tabs: Playground, Apps, Diagnostics, History. Contains typing playground with ghost text, preset picker, and toggleable sections (Diag, Params, Prompts).
@@ -198,9 +209,13 @@ KeybreezeApp (@main)
  │    │    └── LLMClient (HTTP: /v1/chat/completions with SSE)
  │    ├── PredictionHistory (ring buffer, 200 records)
  │    ├── AppSettings (persisted Codable)
+ │    ├── SystemWidePredictor (lazy, only when systemWideMode enabled)
+ │    │    ├── AccessibilityManager (singleton: AX text read/insert + cursor rect)
+ │    │    ├── InputSourceMonitor (singleton: IME safety gate)
+ │    │    └── SuggestionOverlayWindowController (floating ghost overlay)
  │    └── Combine subscriptions: parameter changes → controller
- ├── AccessibilityManager (singleton: AX text read/insert)
- └── InputSourceMonitor (singleton: IME safety gate)
+ ├── AccessibilityManager (shared singleton)
+ └── InputSourceMonitor (shared singleton)
 ```
 
 ### State Sharing
@@ -219,6 +234,7 @@ KeybreezeApp (@main)
 5. **`LLMClient.streamCompletion(prompt:systemPrompt:model:maxTokens:temperature:topP:onToken:)`** — SSE streaming from Ollama's `/v1/chat/completions`.
 6. **Latency tracking** — `predictionStartTime` captured before request, `firstTokenTime` captured on first token callback, TTFT and totalTime computed after stream ends.
 7. **History recording** — every prediction (completed or cancelled with tokens) is recorded via `onRecordPrediction` callback.
+8. **Overlay display** — in system-wide mode, `SystemWidePredictor`'s Combine subscription on `controller.$suggestion` shows/hides the `SuggestionOverlayWindowController` at the cursor position.
 
 ---
 
@@ -271,11 +287,40 @@ struct LLMConfig: Codable, Equatable, Sendable {
 
 ### Ghost Text Rendering
 
-- `GhostTextModifier` is a `ViewModifier` applied to the playground TextField
-- Ghost text is grey/translucent (`.secondary.opacity(0.45)`) static overlay
-- No animations, no blend modes, no popups
-- Correction state: red strikethrough on incorrect word + green suggestion
-- **NOTE:** Ghost text does NOT appear in third-party apps — only in the Typing Lab playground. A floating overlay window is an unimplemented feature.
+**Two rendering paths:**
+
+1. **Typing Lab (in-app):** `GhostTextModifier` — SwiftUI `ViewModifier` overlays ghost text on the playground TextField. Grey/translucent static overlay. No animations.
+
+2. **Third-party apps (system-wide):** `SuggestionOverlayWindowController` — borderless, transparent NSWindow floating at the cursor position. Uses AX API `kAXBoundsForRangeParameterizedAttribute` for cursor position. Transparent background, click-through, no focus steal. Matches the same visual style as `GhostTextModifier`.
+
+### System-Wide Ghost Overlay Data Flow
+
+```
+AX keystroke (CGEventTap)
+  → debounce (40ms)
+  → AccessibilityManager.getTextContext() returns TextContext { prefix, suffix, cursorRect }
+  → SystemWidePredictor resolves cursorRect via 4-tier fallback (see below)
+  → SystemWidePredictor feeds EditorState to CompletionController
+  → CompletionController generates prediction via LLM
+  → controller.$suggestion changes
+  → Combine subscription in SystemWidePredictor fires (ALWAYS shows when non-empty)
+  → SuggestionOverlayWindowController.show(text: at: resolvedCursorRect)
+  → SuggestionOverlayWindowController falls back to screen position if rect is .zero
+  → Floating ghost text appears after cursor in the third-party app
+```
+
+**Cursor Rect Resolution (4-tier fallback):**
+
+AX cursor rect (`kAXBoundsForRangeParameterizedAttribute`) frequently fails in many apps — Terminal, web views, Electron apps (Obsidian, VS Code), and complex editors. When it fails, the overlay must not silently disappear.
+
+1. **Tier 1 (AX embedded):** `getTextContext().cursorRect` — if valid (>0 h/w), use and cache as `lastValidCursorRect`
+2. **Tier 2 (AX independent):** Independent `accessibility.getCursorRect()` call — retries AX on a fresh call
+3. **Tier 3 (Cached):** `lastValidCursorRect` — persists valid rects across keystrokes. When AX intermittently fails, the overlay stays at the last known good position
+4. **Tier 4 (Computed):** `computeFallbackCursorRect()` — a computed position using the focused app's main window AX attributes (`kAXMainWindowAttribute` + position/size), positioned at ~20%/30% into the window
+
+If all AX fallbacks fail, `SuggestionOverlayWindowController` has its own last-resort fallback that positions the overlay at left-center of the screen.
+
+**CRITICAL RULE:** The Combine subscription on `controller.$suggestion` must ALWAYS show the overlay when `suggestion` is non-empty, regardless of cursorRect validity. Never gate overlay display on `lastCursorRect != .zero` — this was the root cause of the ghost overlay being silently invisible in third-party apps.
 
 ---
 
@@ -289,6 +334,8 @@ struct LLMConfig: Codable, Equatable, Sendable {
 - **Prediction history** — ring buffer (200 records) with TTFT, total time, resolution tracking. Every prediction (accepted/ignored/cancelled/invalidated/rejected) recorded.
 - **No animation** — ghost text is static overlay. No flicker, no transitions.
 - **Latency is the primary feature.** `CompletionController` measures TTFT and total time for every prediction. `DiagnosticsPanelView` displays averages. `KeybreezeLatencyLogger` writes to stdout.
+- **Floating overlay for external apps** — since we can't inject SwiftUI views into third-party app hierarchies, we use a borderless `NSWindow` at `popUpMenu` level. It's transparent, click-through (`ignoresMouseEvents = true`), and positioned via AX cursor rect with multi-tier fallback (see data flow section). The effect is identical to inline ghost text but rendered via AppKit.
+- **CRITICAL: overlay must always show when prediction exists** — `SuggestionOverlayWindowController.show()` must NEVER silently bail on invalid cursor rects. If AX cursor rect fails, compute a screen-based fallback. The Combine subscription in `SystemWidePredictor` must NEVER gate overlay display on `lastCursorRect != .zero`. These two gating conditions were the root cause of the ghost overlay being permanently hidden in third-party apps.
 
 ---
 
@@ -303,6 +350,8 @@ This codebase uses Swift concurrency with `@MainActor` on all major classes:
 | `AppState` | `@MainActor` |
 | `AccessibilityManager` | `@MainActor` |
 | `LLMClient` | `@MainActor` (but `onToken` is `@Sendable`) |
+| `SystemWidePredictor` | `@MainActor` |
+| `SuggestionOverlayWindowController` | `@MainActor` |
 
 ### Critical Pattern: Sendable Closure + @MainActor
 
@@ -355,6 +404,8 @@ New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBui
 - Use `.menu` style for `MenuBarExtra` — never `.window`.
 - Pass `.environmentObject(appState).environmentObject(sessionVM)` explicitly to all TypingLab subviews.
 - Defer `restoreToAccessory()` to next runloop when called during window teardown.
+- When adding overlay positioning logic, convert AX coordinates (top-left origin) to NSScreen coordinates (bottom-left origin).
+- Use `orderFrontRegardless()` for overlay windows to avoid stealing focus from the host app.
 
 ### DO NOT:
 - Create new LLM provider files or protocols — `LLMClient` is the only client.
@@ -370,6 +421,8 @@ New Swift files must be added to `Keybreeze.xcodeproj` (PBXFileReference, PBXBui
 - Use `kAXValueAttribute` for text insertion (destroys rich text formatting).
 - Cancel predictions or touch SessionViewModel in `SettingsWindowController.windowWillClose`.
 - Use `Timer.publish` or `onReceive` subscribers that fire during SwiftUI view teardown.
+- Call `NSWindow.orderFront()` on overlay windows (use `orderFrontRegardless()` to avoid activation).
+- Use `.regular` or `.floating` window level for overlays — `.popUpMenu` keeps it above normal windows.
 
 ### When Adding Features:
 1. Understand which file owns the responsibility (see File-by-File Reference).
