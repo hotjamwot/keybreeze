@@ -10,10 +10,10 @@ struct DiagnosticsPanelView: View {
     @State private var showCopySuccess = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Live Engine Diagnostics", systemImage: "chart.bar")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.title2.weight(.semibold))
                 Spacer()
                 Button("Copy Log") {
                     let log = exportLogs()
@@ -25,7 +25,10 @@ struct DiagnosticsPanelView: View {
                 .disabled(sessionVM.predictionHistory.allRecords.isEmpty)
             }
             if showCopySuccess {
-                Text("Log copied to clipboard!").font(.caption2).foregroundColor(.green).padding(.top, 4)
+                Text("Log copied to clipboard!")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                    .padding(.top, 8)
             }
             let history = sessionVM.predictionHistory
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
@@ -43,12 +46,19 @@ struct DiagnosticsPanelView: View {
             }
             .font(.caption.monospacedDigit())
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.05).clipShape(RoundedRectangle(cornerRadius: 8)))
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(NSColor.windowBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 1)
+        )
     }
 
     private func diagnosticItem(label: String, value: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 12) {
             Text(label + ":")
                 .foregroundStyle(.secondary)
             Text(value)

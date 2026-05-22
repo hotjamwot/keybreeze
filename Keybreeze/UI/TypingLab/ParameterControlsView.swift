@@ -9,143 +9,152 @@ struct ParameterControlsView: View {
     @Binding var showAdvancedSettings: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Form {
             // Enable tuning toggle
-            Toggle(isOn: $sessionVM.tuningEnabled) {
-                Label("Override Model Parameters", systemImage: "slider.horizontal.3")
-                    .font(.subheadline.weight(.semibold))
-            }
-            .toggleStyle(.switch)
-            .onChange(of: sessionVM.tuningEnabled) { _, enabled in
-                if enabled {
-                    sessionVM.syncTuningFromModel()
+            Section {
+                Toggle(isOn: $sessionVM.tuningEnabled) {
+                    Label("Override Model Parameters", systemImage: "slider.horizontal.3")
+                        .font(.title2.weight(.semibold))
+                }
+                .toggleStyle(.switch)
+                .onChange(of: sessionVM.tuningEnabled) { enabled in
+                    if enabled {
+                        sessionVM.syncTuningFromModel()
+                    }
+                }
+            } footer: {
+                if !sessionVM.tuningEnabled {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                        Text("Enable parameter overrides to fine-tune the model for your typing style.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
                 }
             }
-            .padding(.bottom, 8)
 
             if sessionVM.tuningEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    // MARK: — Word Caps
-                    GroupBox(label: Label("Suggestion Length", systemImage: "text.word.spacing").font(.caption)) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            // Global max words
-                            HStack {
-                                Text("Max Words (global):")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Picker("", selection: $sessionVM.tuningMaxWords) {
-                                    Text("Model default").tag(0)
-                                    ForEach(2...15, id: \.self) { n in
-                                        Text("\(n)").tag(n)
-                                    }
+                // MARK: — Word Caps
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Global max words
+                        HStack {
+                            Text("Max Words (global):")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Picker("", selection: $sessionVM.tuningMaxWords) {
+                                Text("Model default").tag(0)
+                                ForEach(2...15, id: \.self) { n in
+                                    Text("\(n)").tag(n)
                                 }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
                             }
-
-                            Divider()
-
-                            // Mid-type word cap
-                            modeWordCapPicker(
-                                label: "While typing",
-                                help: "Words to predict while you're actively typing (fast mode)",
-                                value: $sessionVM.midTypeWords
-                            )
-
-                            // Pause word cap
-                            modeWordCapPicker(
-                                label: "On pause",
-                                help: "Words to predict when you stop typing for a moment",
-                                value: $sessionVM.pauseWords
-                            )
-
-                            Text("Set to 0 to use defaults (mid=3, pause=5)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 80)
                         }
-                        .padding(.vertical, 4)
-                    }
 
-                    // MARK: — Sampling Parameters
-                    GroupBox(label: Label("Sampling", systemImage: "thermometer").font(.caption)) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            parameterSlider(
-                                label: "Temperature",
-                                systemImage: "flame",
-                                value: $sessionVM.temperature,
-                                range: 0.0...1.5,
-                                display: String(format: "%.2f", sessionVM.temperature)
-                            )
-                            parameterSlider(
-                                label: "Top-P",
-                                systemImage: "circle.dotted",
-                                value: $sessionVM.topP,
-                                range: 0.0...1.0,
-                                display: String(format: "%.2f", sessionVM.topP)
-                            )
-                            parameterSlider(
-                                label: "Repeat Penalty",
-                                systemImage: "repeat",
-                                value: $sessionVM.repeatPenalty,
-                                range: 0.5...2.0,
-                                display: String(format: "%.2f", sessionVM.repeatPenalty)
-                            )
-                            parameterSlider(
-                                label: "Confidence Threshold",
-                                systemImage: "checkmark.shield",
-                                value: $sessionVM.confidenceThreshold,
-                                range: 0.0...1.0,
-                                display: String(format: "%.2f", sessionVM.confidenceThreshold)
-                            )
-                        }
-                        .padding(.vertical, 4)
-                    }
+                        Divider()
+                            .padding(.vertical, 4)
 
-                    // MARK: — Behaviour Tuning
-                    GroupBox(label: Label("Behaviour", systemImage: "brain.head.profile").font(.caption)) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            parameterSlider(
-                                label: "Verbosity Bias",
-                                systemImage: "text.bubble",
-                                value: $sessionVM.verbosityBias,
-                                range: 0.0...1.0,
-                                display: String(format: "%.2f", sessionVM.verbosityBias)
-                            )
-                            parameterSlider(
-                                label: "Continuation Bias",
-                                systemImage: "arrow.forward",
-                                value: $sessionVM.continuationBias,
-                                range: 0.0...1.0,
-                                display: String(format: "%.2f", sessionVM.continuationBias)
-                            )
-                            parameterSlider(
-                                label: "Instruction Strictness",
-                                systemImage: "list.bullet.clipboard",
-                                value: $sessionVM.instructionStrictness,
-                                range: 0.0...1.0,
-                                display: String(format: "%.2f", sessionVM.instructionStrictness)
-                            )
-                        }
-                        .padding(.vertical, 4)
+                        // Mid-type word cap
+                        modeWordCapPicker(
+                            label: "While typing",
+                            help: "Words to predict while you're actively typing (fast mode)",
+                            value: $sessionVM.midTypeWords
+                        )
+
+                        // Pause word cap
+                        modeWordCapPicker(
+                            label: "On pause",
+                            help: "Words to predict when you stop typing for a moment",
+                            value: $sessionVM.pauseWords
+                        )
+
+                        Text("Set to 0 to use defaults (mid=3, pause=5)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
-                }
-            } else {
-                HStack {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
-                    Text("Enable parameter overrides to fine-tune the model for your typing style.")
+                    .padding(.vertical, 4)
+                } header: {
+                    Label("Suggestion Length", systemImage: "text.word.spacing")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 8)
+
+                // MARK: — Sampling Parameters
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        parameterSlider(
+                            label: "Temperature",
+                            systemImage: "flame",
+                            value: $sessionVM.temperature,
+                            range: 0.0...1.5,
+                            display: String(format: "%.2f", sessionVM.temperature)
+                        )
+                        parameterSlider(
+                            label: "Top-P",
+                            systemImage: "circle.dotted",
+                            value: $sessionVM.topP,
+                            range: 0.0...1.0,
+                            display: String(format: "%.2f", sessionVM.topP)
+                        )
+                        parameterSlider(
+                            label: "Repeat Penalty",
+                            systemImage: "repeat",
+                            value: $sessionVM.repeatPenalty,
+                            range: 0.5...2.0,
+                            display: String(format: "%.2f", sessionVM.repeatPenalty)
+                        )
+                        parameterSlider(
+                            label: "Confidence Threshold",
+                            systemImage: "checkmark.shield",
+                            value: $sessionVM.confidenceThreshold,
+                            range: 0.0...1.0,
+                            display: String(format: "%.2f", sessionVM.confidenceThreshold)
+                        )
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Label("Sampling", systemImage: "thermometer")
+                        .font(.caption)
+                }
+
+                // MARK: — Behaviour Tuning
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        parameterSlider(
+                            label: "Verbosity Bias",
+                            systemImage: "text.bubble",
+                            value: $sessionVM.verbosityBias,
+                            range: 0.0...1.0,
+                            display: String(format: "%.2f", sessionVM.verbosityBias)
+                        )
+                        parameterSlider(
+                            label: "Continuation Bias",
+                            systemImage: "arrow.forward",
+                            value: $sessionVM.continuationBias,
+                            range: 0.0...1.0,
+                            display: String(format: "%.2f", sessionVM.continuationBias)
+                        )
+                        parameterSlider(
+                            label: "Instruction Strictness",
+                            systemImage: "list.bullet.clipboard",
+                            value: $sessionVM.instructionStrictness,
+                            range: 0.0...1.0,
+                            display: String(format: "%.2f", sessionVM.instructionStrictness)
+                        )
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Label("Behaviour", systemImage: "brain.head.profile")
+                        .font(.caption)
+                }
             }
         }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor).cornerRadius(10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-        )
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 
     // MARK: - Component Helpers
