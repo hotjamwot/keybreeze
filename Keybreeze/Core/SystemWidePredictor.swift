@@ -421,6 +421,7 @@ final class SystemWidePredictor {
                        AXValueGetValue(szValue as! AXValue, .cgSize, &size) {
                         let caretX = position.x + size.width * 0.2
                         let caretY = position.y + size.height * 0.3
+                        log.debug("Computed fallback cursorRect: (\(caretX), \(caretY)) for bundle \(appBundleID)")
                         return CGRect(x: caretX, y: caretY, width: 2, height: 16)
                     }
                 }
@@ -429,6 +430,7 @@ final class SystemWidePredictor {
 
         if let screen = NSScreen.main {
             let frame = screen.frame
+            log.debug("Fallback cursorRect (screen-based): (\(frame.midX), \(frame.midY))")
             return CGRect(
                 x: frame.midX - 200,
                 y: frame.midY + 100,

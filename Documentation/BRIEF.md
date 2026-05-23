@@ -228,9 +228,9 @@ Backend selected via segmented control in the menu bar. Swapping backends auto-m
 | 6+ — Polish, Style Memory, Expansion | Later |
 
 **Current issues:**
-1. Settings window close still intermittently crashes (ViewBridge error, re-entrancy during teardown)
-2. ~~Ghost text only shows in Typing Lab playground — not in third-party apps~~ → ✅ Resolved. Floating transparent overlay (`SuggestionOverlayWindowController`) positioned at the caret via AX API now shows ghost predictions in the focused third-party app.
-3. ~~System-wide text insertion works via keyboard event synthesis but lacks visual prediction display in external apps~~ → ✅ Resolved. Ghost overlay appears automatically when a suggestion arrives, positioned directly after the caret.
+1. Settings window close still intermittently crashes (ViewBridge error, re-entrancy during teardown). Fixed by using `windowWillClose` and deferring policy change.
+2. Ghost overlay vertical alignment and screen positioning issues (multi-monitor support, baseline alignment).
+3. Ghost text flickering/blocking when Keybreeze itself is focused. Fixed by gating logic in `SystemWidePredictor`.
 
 ---
 
