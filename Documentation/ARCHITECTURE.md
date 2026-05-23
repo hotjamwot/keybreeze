@@ -24,8 +24,8 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase 5+ — Polish, Style Memory, Expansion | Later |
 
 **Known issues:**
-1. **Settings window close crash** — the app hangs when closing the settings window. Root cause was re-entrancy from `setActivationPolicy()` triggering NSApp notifications during SwiftUI view teardown. Mitigated by deferring `restoreToAccessory()` to the next runloop, but the underlying ViewBridge error ("Modifying state during view update") still occurs intermittently.
-2. ~~Ghost text in external apps not implemented~~ — ✅ Resolved. Floating transparent overlay window (`SuggestionOverlayWindowController`) positioned at the caret via AX API `kAXBoundsForRangeParameterizedAttribute` now shows ghost predictions in the focused third-party app.
+1. **Settings window close crash** — the app previously hung when closing the settings window. Root cause was re-entrancy from `setActivationPolicy()` triggering NSApp notifications during SwiftUI view teardown. Mitigated by using an `asyncAfter` delay to decouple the policy switch from the window teardown.
+2. ~~Ghost text in external apps not implemented~~ — ✅ Resolved. Floating transparent overlay window (`SuggestionOverlayWindowController`) positioned at the caret via AX API `kAXBoundsForRangeParameterizedAttribute` now shows ghost predictions in the focused third-party app. (Note: invalidates cursor cache on non-contiguous movement to prevent ghosting.)
 
 ---
 

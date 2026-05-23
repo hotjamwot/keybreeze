@@ -14,7 +14,7 @@ struct GhostTextModifier: ViewModifier {
                 ghostOverlayContent
                     .allowsHitTesting(false)
                     .padding(.leading, 9)  // Match NSTextField inner padding
-                    .padding(.top, 10)     // Match NSTextField inner padding vertical
+                    .padding(.top, 0)     // Corrected: TextField already has padding(10)
             }
     }
 

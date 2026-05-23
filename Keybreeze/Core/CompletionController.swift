@@ -23,7 +23,7 @@ final class CompletionController: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
-    private let debounceDelay: Duration = .milliseconds(45)
+    private let debounceDelay: Duration = .milliseconds(100)
     private var editorState: EditorState = .init(textBeforeCursor: "", textAfterCursor: "")
 
     /// The model to use for predictions — updated from AppState.

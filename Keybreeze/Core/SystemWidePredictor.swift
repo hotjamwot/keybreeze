@@ -62,11 +62,21 @@ final class SystemWidePredictor {
     /// permanently stuck at `.zero`.
     private var lastValidCursorRect: CGRect = .zero
 
+    /// Tracks the last known cursor rect for cursor-movement detection.
+    /// When text is unchanged but cursor moves (arrow keys, mouse click),
+    /// we must invalidate the suggestion per §6.
+    private var lastSeenCursorRect: CGRect = .zero
+
     /// The last app bundle ID we saw — used to detect app switches.
     private var lastAppBundleID: String?
 
     /// Whether we currently have an active text context (text field focused).
     private var hasActiveContext: Bool = false
+
+    /// Consecutive failures to read AX context — used to implement a grace period
+    /// before clearing the suggestion.
+    private var axFailureCount: Int = 0
+    private let axFailureThreshold: Int = 3
 
     /// Debounce task for triggered reads — ensures we wait for text to settle.
     private var debounceTask: Task<Void, Never>?
@@ -102,6 +112,7 @@ final class SystemWidePredictor {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] suggestion in
                 guard let self else { return }
+                if self.isPaused { return }
                 if suggestion.isEmpty {
                     self.log.debug("Overlay: suggestion cleared → hiding")
                     self.overlay.hide()
@@ -252,10 +263,18 @@ final class SystemWidePredictor {
         focusedAppName = appName(for: bundleID)
 
         // 2. Gating checks
+        log.debug("Current focused app bundle ID: \(bundleID)")
+        if bundleID == "app.keybreeze.Keybreeze" {
+            setPaused(reason: "Keybreeze focused")
+            return
+        }
+
         guard shouldProcessApp(bundleID) else {
             if bundleID != lastAppBundleID {
                 log.debug("App switch to blocked app '\(bundleID)' — clearing suggestion")
-                controller.suggestion = ""
+                DispatchQueue.main.async { [weak self] in
+                    self?.controller.suggestion = ""
+                }
                 hasActiveContext = false
             }
             return
@@ -282,19 +301,43 @@ final class SystemWidePredictor {
         // 5. Read text context via AX
         log.debug("Reading AX text context from '\(bundleID)'...")
         guard let context = accessibility.getTextContext(maxChars: 800) else {
-            log.debug("AX getTextContext returned nil — no text field focused or context unavailable")
-            if hasActiveContext {
+            axFailureCount += 1
+            log.debug("AX getTextContext returned nil (failure \(self.axFailureCount)/\(self.axFailureThreshold))")
+            if hasActiveContext && axFailureCount >= axFailureThreshold {
                 log.debug("Lost active text context — clearing suggestion")
-                controller.suggestion = ""
-                overlay.hide()
+                DispatchQueue.main.async { [weak self] in
+                    self?.controller.suggestion = ""
+                    self?.overlay.hide()
+                }
                 hasActiveContext = false
             }
             return
         }
+        axFailureCount = 0
         log.debug("AX context: prefix='\(context.prefix.suffix(60))' suffix='\(context.suffix.prefix(20))' cursorRect=(\(context.cursorRect.origin.x), \(context.cursorRect.origin.y), \(context.cursorRect.size.width)x\(context.cursorRect.size.height))")
 
-        // 6. Check for meaningful change
+        // 6. Resolve cursor rect BEFORE the text-unchanged guard.
+        // Critical: even when text hasn't changed, the cursor may have moved
+        // (arrow keys, mouse click). We need to:
+        //   a) detect movement and invalidate the suggestion (§6),
+        //   b) keep lastCursorRect up to date for when a new suggestion arrives.
+        resolveCursorRect(from: context)
+        let cursorRectChanged = lastSeenCursorRect != .zero
+            && lastSeenCursorRect != lastCursorRect
+        lastSeenCursorRect = lastCursorRect
+
+        // 7. Check for meaningful change
         guard context.prefix != lastTextBeforeCursor || context.suffix != lastTextAfterCursor else {
+            // Per §6: cursor moved without text change → invalidate prediction immediately.
+            // This covers arrow keys, mouse clicks, and selection changes picked up
+            // by the idle poll (500ms). The event tap handles keyDown instantly.
+            if cursorRectChanged && hasActiveContext && !controller.suggestion.isEmpty {
+                log.debug("Cursor moved without text change — invalidating suggestion")
+                lastValidCursorRect = .zero
+                DispatchQueue.main.async { [weak self] in
+                    self?.controller.suggestion = ""
+                }
+            }
             log.debug("Text unchanged — skipping prediction")
             return
         }
@@ -302,9 +345,6 @@ final class SystemWidePredictor {
         lastTextBeforeCursor = context.prefix
         lastTextAfterCursor = context.suffix
         hasActiveContext = true
-
-        // 7. Resolve cursor rect for overlay positioning
-        resolveCursorRect(from: context)
 
         // 8. Feed into prediction engine
         log.debug("Feeding EditorState to controller (prefix length=\(context.prefix.count))")
@@ -459,8 +499,10 @@ final class SystemWidePredictor {
         lastAppBundleID = nil
         if hasActiveContext {
             log.debug("No focus — clearing suggestion and hiding overlay")
-            controller.suggestion = ""
-            overlay.hide()
+            DispatchQueue.main.async { [weak self] in
+                self?.controller.suggestion = ""
+                self?.overlay.hide()
+            }
             hasActiveContext = false
         }
         lastTextBeforeCursor = ""

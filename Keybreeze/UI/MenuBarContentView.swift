@@ -23,7 +23,7 @@ struct MenuBarContentView: View {
                     Circle()
                         .fill(sessionVM.isSchedulerActive ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
-                    Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
+                    Text(sessionVM.isSchedulerActive ? "Active" : "Enable Keybreeze")
                         .font(.caption2)
                         .foregroundStyle(sessionVM.isSchedulerActive ? .green : .orange)
                 }
@@ -144,11 +144,18 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func open(appState: AppState, sessionVM: SessionViewModel) {
-        // If window already exists and is visible, bring it to front
-        if let existingWindow = window, existingWindow.isVisible {
-            existingWindow.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            return
+        // If window already exists, check if it's still valid (in NSApp.windows) and visible.
+        if let existingWindow = window {
+            if NSApplication.shared.windows.contains(existingWindow) {
+                if existingWindow.isVisible {
+                    existingWindow.makeKeyAndOrderFront(nil)
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    return
+                }
+            } else {
+                // Window is no longer in the application's window list, so it's gone.
+                window = nil
+            }
         }
 
         let width: CGFloat = 700
@@ -181,21 +188,22 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // The SessionViewModel is an app-level singleton shared with the
-        // menu bar and other UI surfaces. Closing the settings window is
-        // purely a UI action — it must NOT cancel predictions or touch
-        // the session VM state. Predictions continue running in other apps.
-
-        // 1. Release the window reference first, allowing the NSHostingView
-        //    and its SwiftUI view hierarchy to deallocate synchronously.
+        // 1. Clear the delegate before anything else to stop receiving events
+        window?.delegate = nil
+        
+        // 2. Release the window reference
         window = nil
 
-        // 2. Defer the activation policy change to the next run loop
+        // 3. Defer the activation policy change to the next run loop
         //    iteration. setActivationPolicy(.accessory) triggers NSApp
         //    lifecycle notifications which can cause re-entrancy crashes
         //    if called while SwiftUI views are mid-teardown.
-        DispatchQueue.main.async {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             AppKitLifecycle.restoreToAccessory()
         }
+    }
+    
+    // We keep windowDidClose empty or remove it if we use windowWillClose
+    func windowDidClose(_ notification: Notification) {
     }
 }

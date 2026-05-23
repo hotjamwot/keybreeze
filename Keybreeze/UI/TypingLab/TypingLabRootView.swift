@@ -149,22 +149,32 @@ struct TypingLabRootView: View {
                 .font(.title2.weight(.semibold))
             
             // Multi-line editor with ghost overlay
-            TextField("Start typing…", text: $sessionVM.draftText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(3...10)
-                .frame(maxWidth: .infinity)
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(NSColor.windowBackgroundColor))
-                        .strokeBorder(Color(NSColor.separatorColor).opacity(0.3), lineWidth: 1)
-                )
-                .disabled(!sessionVM.isSchedulerActive)
-                .onChange(of: sessionVM.draftText) { _, _ in
-                    sessionVM.draftTextChanged()
+            ZStack(alignment: .topLeading) {
+                if sessionVM.draftText.isEmpty {
+                    Text("Start typing…")
+                        .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
                 }
-                .ghostText(draftText: $sessionVM.draftText, suggestion: $sessionVM.suggestion, correctionState: $sessionVM.correctionState, isSchedulerActive: $sessionVM.isSchedulerActive)
+                
+                TextField("", text: $sessionVM.draftText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(3...10)
+                    .frame(maxWidth: .infinity)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(NSColor.windowBackgroundColor))
+                            .strokeBorder(Color(NSColor.separatorColor).opacity(0.3), lineWidth: 1)
+                    )
+                    .disabled(!sessionVM.isSchedulerActive)
+                    .onChange(of: sessionVM.draftText) { _, _ in
+                        sessionVM.draftTextChanged()
+                    }
+                    .ghostText(draftText: $sessionVM.draftText, suggestion: $sessionVM.suggestion, correctionState: $sessionVM.correctionState, isSchedulerActive: $sessionVM.isSchedulerActive)
+            }
             
             // Mode indicator
             if !sessionVM.currentPredictionMode.isEmpty {

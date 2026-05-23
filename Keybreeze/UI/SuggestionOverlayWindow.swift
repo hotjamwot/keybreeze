@@ -16,6 +16,10 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
     private let log = Logger(subsystem: "app.keybreeze", category: "overlay")
     private var window: NSWindow?
 
+    /// Tracks the last text we displayed — used to skip redundant updates
+    /// during streaming when the content hasn't actually changed size.
+    private var lastDisplayedText: String = ""
+
     // MARK: Configuration
 
     /// Font size matching a typical NSFont.systemFont(ofSize: ...) for body text.
@@ -29,24 +33,18 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
         window?.isVisible ?? false
     }
 
-    // MARK: Show / Hide
+    // MARK: Show / Update / Hide
 
     /// Shows ghost text at the specified cursor position.
-    /// - Parameters:
-    ///   - text: The suggestion text to display (just the ghost part, not the committed text).
-    ///   - cursorRect: Cursor bounding rect in AX coordinate space (origin top-left of main screen).
-    ///                If `.zero` or invalid, the overlay will still appear at a computed
-    ///                default position (centered near top of screen). This ensures the overlay
-    ///                always shows even when AX cursor rect extraction fails.
+    /// Reuses the existing window when possible to avoid flicker during
+    /// streaming token updates. Only recreates the window on first show
+    /// or after a hide.
     func show(text: String, at cursorRect: CGRect) {
         guard !text.isEmpty else {
             log.debug("show() called with empty text — hiding")
             hide()
             return
         }
-
-        // Always hide existing window before creating a new one
-        hide()
 
         // Resolve the effective cursor rect. If the rect is invalid/zero,
         // compute a fallback position so the overlay still appears.
@@ -90,52 +88,67 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
 
         let contentSize = hostingView.frame.size
 
-        // Convert AX coordinates (origin top-left) to NSScreen coordinates (origin bottom-left)
-        // and position the overlay just after the cursor (to the right, same baseline).
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            log.warning("No screen available — cannot position overlay")
-            return
-        }
-
-        // Use effectiveRect for positioning
+        // Find the screen containing the cursor rect to handle multi-monitor setups
+        let screen = NSScreen.screens.first { $0.frame.contains(effectiveRect.origin) } ?? NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.frame
 
         // AX coordinate space: (0,0) = top-left of main screen.
         // NSScreen coordinate space: (0,0) = bottom-left of main screen.
+        // X converts directly.
+        // Y conversion:
+        //   The AX coordinate (effectiveRect.origin.y) is top-down from the top of the screen (in AX space).
+        //   If screens have different origins, we need to be careful.
+        //   However, for the screen containing the rect, we can calculate Y relative to that screen.
+        //
+        //   Let's use the screen's frame for coordinate conversion.
         let x = effectiveRect.origin.x + effectiveRect.width
-        let y = screenFrame.height - effectiveRect.origin.y - effectiveRect.height - contentSize.height + 2
+        let y = screenFrame.maxY - effectiveRect.origin.y - effectiveRect.height - contentSize.height - 2
+
 
         // Clamp to screen bounds so the overlay is always fully visible
         let clampedX = max(screenFrame.minX + 2, min(x, screenFrame.maxX - contentSize.width - 2))
         let clampedY = max(screenFrame.minY + 2, min(y, screenFrame.maxY - contentSize.height - 2))
 
-        let windowFrame = NSRect(
+        let newFrame = NSRect(
             origin: CGPoint(x: clampedX, y: clampedY),
             size: contentSize
         )
-        log.debug("Overlay window frame: (\(windowFrame.origin.x), \(windowFrame.origin.y), \(windowFrame.size.width)x\(windowFrame.size.height)) (pre-clamp x=\(x) y=\(y))")
 
-        let overlayWindow = NSWindow(
-            contentRect: windowFrame,
-            styleMask: .borderless,
-            backing: .buffered,
-            defer: false
-        )
+        // Reuse existing window if possible — avoids flicker from destroy+recreate
+        if let existingWindow = window, existingWindow.isVisible {
+            // Update content view for streaming tokens
+            existingWindow.contentView = hostingView
+            existingWindow.setFrame(newFrame, display: true, animate: false)
+            log.debug("✅ Overlay window reused — frame=(\(newFrame.origin.x), \(newFrame.origin.y), \(newFrame.size.width)x\(newFrame.size.height)) isVisible=\(existingWindow.isVisible)")
+        } else {
+            // Hide any existing window state before creating new one
+            hide()
 
-        overlayWindow.level = .popUpMenu
-        overlayWindow.isOpaque = false
-        overlayWindow.backgroundColor = .clear
-        overlayWindow.hasShadow = false
-        overlayWindow.ignoresMouseEvents = true
-        overlayWindow.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        overlayWindow.contentView = hostingView
-        overlayWindow.animationBehavior = .none
+            let overlayWindow = NSWindow(
+                contentRect: newFrame,
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false
+            )
 
-        self.window = overlayWindow
+            overlayWindow.level = .popUpMenu
+            overlayWindow.isOpaque = false
+            overlayWindow.backgroundColor = .clear
+            overlayWindow.hasShadow = false
+            overlayWindow.ignoresMouseEvents = true
+            overlayWindow.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            overlayWindow.contentView = hostingView
+            overlayWindow.animationBehavior = .none
 
-        // Show without activating Keybreeze
-        overlayWindow.orderFrontRegardless()
-        log.debug("✅ Overlay window ordered front — frame=(\(overlayWindow.frame.origin.x), \(overlayWindow.frame.origin.y), \(overlayWindow.frame.size.width)x\(overlayWindow.frame.size.height)) isVisible=\(overlayWindow.isVisible)")
+            self.window = overlayWindow
+
+            // Show without activating Keybreeze
+            overlayWindow.orderFrontRegardless()
+            log.debug("✅ Overlay window created — frame=(\(newFrame.origin.x), \(newFrame.origin.y), \(newFrame.size.width)x\(newFrame.size.height)) isVisible=\(overlayWindow.isVisible)")
+        }
+
+        // Track displayed text for redundant-update detection
+        lastDisplayedText = text
     }
 
     /// Hides the overlay immediately.
@@ -146,9 +159,11 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
         log.debug("Hiding overlay window")
         window.orderOut(nil)
         self.window = nil
+        lastDisplayedText = ""
     }
 
     /// Repositions the overlay if it's currently visible, using a new cursor rect.
+    /// Does not recreate the window — just moves it.
     func reposition(at cursorRect: CGRect) {
         guard let window, window.isVisible else {
             log.debug("reposition() called but no visible window")
@@ -161,14 +176,13 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
             return
         }
 
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            return
-        }
+        // Find the screen containing the cursor rect to handle multi-monitor setups
+        let screen = NSScreen.screens.first { $0.frame.contains(cursorRect.origin) } ?? NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.frame
         let contentSize = window.frame.size
 
         let x = cursorRect.origin.x + cursorRect.width
-        let y = screenFrame.height - cursorRect.origin.y - cursorRect.height - contentSize.height + 2
+        let y = screenFrame.maxY - cursorRect.origin.y - cursorRect.height - contentSize.height - 2
 
         let clampedX = max(screenFrame.minX + 2, min(x, screenFrame.maxX - contentSize.width - 2))
         let clampedY = max(screenFrame.minY + 2, min(y, screenFrame.maxY - contentSize.height - 2))
