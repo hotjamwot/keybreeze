@@ -24,7 +24,7 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase 5+ — Polish, Style Memory, Expansion | Later |
 
 **Known issues:**
-1. **Settings window close intermittent crash** — Fixed by using `windowWillClose` and deferring policy change.
+1. **Typing Lab text field not responding to input** — The playground TextField in TypingLabView does not register keystrokes when the user types. The `sessionVM.draftText` binding does not update on keypress. Suspected: focus issue within Form/HSplitView/hidden-title-bar window, or ghost overlay blocking input. Workaround: use system-wide mode (enable Keybreeze, type in any app) to test predictions. See Known Issues section in BRIEF.md.
 2. **Ghost overlay positioning** — Improved screen detection and baseline alignment; still tuning fallback logic for multi-monitor and non-AX-compliant apps.
 3. **App gating interference** — Fixed with gating logic in `SystemWidePredictor` to ignore `Keybreeze` focused events.
 4. **Typing Lab ghost text vertical offset** — Fixed by aligning overlay padding with `TextField` internal padding.
@@ -49,9 +49,12 @@ This section is the **ground truth** — every file that exists, what it does, a
 
 ### `Keybreeze/App/KeybreezeApp.swift`
 - **Role:** `@main` entry point. Creates `AppState` as `@StateObject`. Lazily creates `SessionViewModel` as `@State` (so it outlives menu opens/closes).
-- **Scene:** `MenuBarExtra` with `.menuBarExtraStyle(.menu)` — **NOT** `.window`.
-- **Does:** Injects `appState` and `resolvedSessionVM` as environment objects into `MenuBarContentView`.
-- **RULE:** Do NOT change the scene style to `.window`. Do NOT wrap `TypingLabRootView` in the menu bar. Do NOT use `.window` style.
+- **Scenes:** 
+  - `MenuBarExtra` with `.menuBarExtraStyle(.menu)` — the menu bar dropdown.
+  - `Window("Keybreeze Settings", id: "settings")` — the settings window, using SwiftUI's native Window scene with `.windowStyle(.hiddenTitleBar)` for a clean, borderless appearance. This replaced the manual `SettingsWindowController` approach, which crashed on close due to re-entrant AppKit teardown.
+- **Lifecycle:** `.onAppear` calls `AppKitLifecycle.showInDockAndCmdTab()`. `.onDisappear` cancels predictions and defers `restoreToAccessory()` to avoid re-entrancy.
+- **RULE:** Do NOT change the menu bar scene style to `.window`. Do NOT wrap `TypingLabRootView` in the menu bar. Do NOT use `.window` style.
+- **RULE:** Use `.windowStyle(.hiddenTitleBar)` and `.commandsRemoved()` on the settings scene for a clean look. Avoid manual NSWindow lifecycle management.
 
 ### `Keybreeze/App/AppKitLifecycle.swift`
 - **Role:** Sets activation policy to `.accessory`. Registers for `willTerminateNotification` to pkill any orphan `llama-server` processes.
@@ -129,9 +132,7 @@ This section is the **ground truth** — every file that exists, what it does, a
 
 ### `Keybreeze/UI/MenuBarContentView.swift`
 - **Role:** The menu bar dropdown content. A compact `VStack` with: daily completions count, Active button (enable/disable), mode indicator (always System when active), Settings button, Backend/Model pickers, status indicator, suggestion preview, Quit button.
-- **Contains:** `SettingsWindowController` — manages opening/closing the standalone Settings window (700×520, centered on screen). Uses `AppKitLifecycle.showInDockAndCmdTab()`/`restoreToAccessory()` for Dock/Cmd+Tab presence while open.
-- **RULE:** `windowWillClose` must NOT cancel predictions or touch `SessionViewModel` — the session VM is an app-level singleton. Just release the window reference.
-- **RULE:** `restoreToAccessory()` is deferred to next runloop to prevent NSApp notification re-entrancy crashing during SwiftUI view teardown.
+- **Settings opening:** Uses `@Environment(\.openWindow)` to open the SwiftUI `Window` scene with `id: "settings"`. This replaces the old `SettingsWindowController` approach (manual NSWindow management) which caused EXC_BAD_ACCESS crashes on close due to re-entrant AppKit teardown.
 - **RULE:** This is the ONLY dropdown content. Do NOT add Typing Lab views here. Do NOT change `.menuBarExtraStyle(.menu)`.
 - **RULE:** When active, system-wide predictions are always enabled (no separate toggle needed).
 - **RULE:** Focused app display reads from `sessionVM.focusedAppName`, `sessionVM.isSystemWidePaused`, `sessionVM.systemWidePauseReason` — these are backed by `SystemWidePredictor`'s published properties.
@@ -283,11 +284,13 @@ struct LLMConfig: Codable, Equatable, Sendable {
    - Settings button opens a separate NSWindow
    - ".menu" style — NOT ".window"
 
-2. **Settings window** (`SettingsView` in a standalone NSWindow via `SettingsWindowController`)
-   - 700×520, centered on screen, uses `.regular` activation policy while open (Dock + Cmd+Tab)
-   - Two tabs: General, Typing Lab
-   - Typing Lab tab has Playground, Apps, Diagnostics, History
-   - Opens/closes without affecting prediction engine state
+2. **Settings window** (`SettingsView` in SwiftUI `Window` scene with `.hiddenTitleBar`)
+   - 820×580 default size, uses `.regular` activation policy while open (Dock + Cmd+Tab)
+   - Two panels: General, Typing Lab — navigated via `HSplitView` sidebar
+   - General panel: Active toggle, status pills, labeled statistics card, Backend/Model pickers
+   - Typing Lab panel: typing playground with ghost text overlay, preset picker, toggleable Diagnostics/Parameters/Prompts sections
+   - `.windowStyle(.hiddenTitleBar)` for a clean borderless look — zero chrome
+   - Opens via `@Environment(\.openWindow)` from the menu bar, closes cleanly via SwiftUI lifecycle
 
 ### Ghost Text Rendering
 

@@ -13,8 +13,8 @@ struct GhostTextModifier: ViewModifier {
             .overlay(alignment: .topLeading) {
                 ghostOverlayContent
                     .allowsHitTesting(false)
-                    .padding(.leading, 9)  // Match NSTextField inner padding
-                    .padding(.top, 12)     // Adjusted for visual baseline alignment
+                    .padding(.leading, 14)  // Match TextField inner padding (12 + 2 for stroke)
+                    .padding(.top, 14)      // Match TextField inner padding
             }
     }
 

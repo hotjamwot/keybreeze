@@ -1,153 +1,113 @@
 import SwiftUI
 
-/// Main settings window — macOS preferences-style grouped form with tabs.
-/// Minimal for now: contains a General pane and embeds Typing Lab.
+/// Main settings window — macOS preference style with sidebar navigation.
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var sessionVM: SessionViewModel
     
-    var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .environmentObject(appState)
-                .environmentObject(sessionVM)
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-            
-            TypingLabSettingsView()
-                .environmentObject(appState)
-                .environmentObject(sessionVM)
-                .tabItem {
-                    Label("Typing Lab", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
-                }
+    enum Tab: String, CaseIterable, Identifiable {
+        case general = "General"
+        case typingLab = "Typing Lab"
+        
+        var id: String { self.rawValue }
+        
+        var icon: String {
+            switch self {
+            case .general: return "gearshape"
+            case .typingLab: return "testtube.2"
+            }
         }
-        .frame(minWidth: 580, minHeight: 480)
-        .formStyle(.grouped)
+    }
+    
+    @State private var selection: Tab? = .general
+    
+    var body: some View {
+        HSplitView {
+            // Sidebar
+            List {
+                ForEach(Tab.allCases) { tab in
+                    Button {
+                        selection = tab
+                    } label: {
+                        Label(tab.rawValue, systemImage: tab.icon)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        selection == tab
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.clear
+                    )
+                }
+            }
+            .listStyle(.sidebar)
+            .frame(minWidth: 150, idealWidth: 170, maxWidth: 220)
+
+            // Detail
+            Group {
+                switch selection {
+                case .general:
+                    GeneralSettingsView()
+                        .environmentObject(appState)
+                        .environmentObject(sessionVM)
+                case .typingLab:
+                    TypingLabView()
+                        .environmentObject(appState)
+                        .environmentObject(sessionVM)
+                case .none:
+                    EmptyDetailView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 800, minHeight: 600)
     }
 }
 
-// MARK: - InfoTip
-
-/// Inline information popover that displays helper text when tapped.
-/// Used inline inside `HStack(spacing: 4)` next to `Text` labels.
-private struct InfoTip: View {
-    /// The helper text to display in the popover.
-    let text: LocalizedStringKey
-    
-    /// Optional learn more URL. If provided, a "Learn more" link will appear at the bottom of the popover.
-    let learnMoreURL: String?
-    
-    /// The width of the popover.
-    private let popoverWidth: CGFloat = 280
-    
-    /// The padding inside the popover.
-    private let popoverPadding: CGFloat = 14
-    
-    /// State tracking whether the popover is currently presented.
-    @State private var isShowingPopover: Bool = false
-    
-    init(_ text: LocalizedStringKey, learnMoreURL: String? = nil) {
-        self.text = text
-        self.learnMoreURL = learnMoreURL
-    }
-    
+// MARK: - Empty Detail
+private struct EmptyDetailView: View {
     var body: some View {
-        Button(action: {
-            isShowingPopover = true
-        }) {
-            Image(systemName: "info.circle.fill")
-                .renderingMode(.template)
-                .scaleEffect(0.8)
-                .foregroundColor(Color(NSColor.labelColor))
-                .font(.system(size: 14))
-                .buttonStyle(.plain)
-                .frame(width: 20, height: 20, alignment: .center)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $isShowingPopover) {
-            VStack(alignment: .leading) {
-                // Helper text
-                Text(text)
-                    .font(.system(size: 14))
-                    .foregroundColor(Color.accentColor) // Changed from NSColor.accentColor to Color.accentColor
-                    .fixedSize(horizontal: false, vertical: true)
-                
-                // Learn more link if URL is provided
-                if let learnMoreURL = learnMoreURL {
-                    Divider()
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
-                    
-                    Link("Learn more", destination: URL(string: learnMoreURL)!)
-                        .foregroundColor(Color.accentColor)
-                        .font(.system(size: 14))
-                }
-            }
-            .padding(.horizontal, popoverPadding)
-            .padding(.vertical, popoverPadding / 2)
-            .frame(width: popoverWidth)
-            .background(Color(NSColor.windowBackgroundColor))
-        }
+        Text("Select a tab")
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - General
-
 struct GeneralSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var sessionVM: SessionViewModel
     
-    /// Tracks whether AX permissions have been granted.
-    /// Refreshed when the view appears.
     @State private var accessibilityGranted: Bool = false
     
     var body: some View {
         Form {
-            // MARK: - Active Toggle
+            // MARK: - Status
             Section {
                 Toggle(isOn: $sessionVM.isSchedulerActive) {
                     HStack(spacing: 4) {
                         Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
-                            .font(.body)
-                        InfoTip("Enable or disable Keybreeze system-wide.")
                     }
                 }
+                .toggleStyle(.switch)
                 
-                // AX Permission status.
-                // NOTE: We check status on appear only. The AX permission dialog
-                // returns focus to the app after the user grants/denies, which
-                // triggers .onAppear again so the status updates correctly.
-                HStack {
-                    Label(accessibilityGranted ? "Accessibility Access Granted" : "Accessibility Access Required",
-                          systemImage: accessibilityGranted ? "hand.raised.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(accessibilityGranted ? Color(NSColor.secondaryLabelColor) : Color(NSColor.orange))
-                        .font(.body)
-                    Spacer()
-                    if !accessibilityGranted {
-                        Button("Grant AX Access") {
-                            AccessibilityManager.shared.requestAccessibility()
-                        }
-                        .font(.caption)
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-                        .controlSize(.small)
-                    }
-                }
-                .onAppear {
-                    refreshAXStatus()
-                }
+                accessibilityRow
             } header: {
                 Text("Status")
-                    .font(.title2)
-                    .fontWeight(.semibold)
             } footer: {
                 Text("Keybreeze requires Accessibility access to read and insert text in other apps.")
                     .settingsDescription()
             }
             
-            // MARK: - Model
+            // MARK: - Statistics
+            Section {
+                statisticsCard
+            } header: {
+                Text("Statistics")
+            }
+            
+            // MARK: - AI Settings
             Section {
                 Picker("Backend", selection: $appState.selectedBackend) {
                     ForEach(LLMBackend.allCases) { backend in
@@ -156,13 +116,10 @@ struct GeneralSettingsView: View {
                 }
                 
                 if appState.availableModels.isEmpty {
-                    HStack {
-                        Text("Model")
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                        Spacer()
+                    LabeledContent("Model") {
                         Text(appState.modelCatalogStatus.isEmpty ? "Loading..." : appState.modelCatalogStatus)
                             .font(.caption)
-                            .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+                            .foregroundStyle(.secondary)
                     }
                 } else {
                     Picker("Model", selection: $appState.selectedModel) {
@@ -172,56 +129,105 @@ struct GeneralSettingsView: View {
                     }
                 }
             } header: {
-                Text("LLM Provider")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Text("AI Settings")
             } footer: {
-                Text("Choose the backend and model used for inline predictions.")
+                Text("Configure your LLM provider and model for inline predictions.")
                     .settingsDescription()
             }
             
-            // MARK: - Today's Stats
+            // MARK: - Auto completion
             Section {
-                HStack {
-                    Text("Keys Breezed Today")
-                    Spacer()
-                    Text("[\(sessionVM.dailyAcceptedCount)]")
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                        .font(.body.monospacedDigit())
-                }
+                Text("Coming soon...")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
             } header: {
-                Text("Statistics")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Text("Auto Completion Options")
             }
         }
+        .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(Color(NSColor.controlBackgroundColor))
+        .onAppear {
+            accessibilityGranted = AccessibilityManager.shared.checkAccessibility()
+        }
     }
     
-    /// Refresh the AX permission status from the AccessibilityManager.
-    private func refreshAXStatus() {
-        accessibilityGranted = AccessibilityManager.shared.checkAccessibility()
-    }
-}
-
-// MARK: - Typing Lab
-
-struct TypingLabSettingsView: View {
-    @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var sessionVM: SessionViewModel
+    // MARK: - Accessibility Row
     
-    var body: some View {
-        TypingLabRootView()
-            .environmentObject(appState)
-            .environmentObject(sessionVM)
+    @ViewBuilder
+    private var accessibilityRow: some View {
+        if accessibilityGranted {
+            LabeledContent {
+                statusPill(label: "Granted", color: .green)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.green)
+                    Text("Accessibility Access")
+                }
+            }
+        } else {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    statusPill(label: "Required", color: .orange)
+                    Button("Grant Access") {
+                        AccessibilityManager.shared.requestAccessibility()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.orange)
+                    Text("Accessibility Access")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Statistics Card
+    
+    private var statisticsCard: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Keys Breezed Today")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text("\(sessionVM.dailyAcceptedCount)")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundStyle(Color.accentColor)
+            }
+            Spacer()
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.accentColor.opacity(0.08))
+        )
+    }
+    
+    // MARK: - Status Pill
+    
+    private func statusPill(label: String, color: Color) -> some View {
+        Text(label)
+            .font(.caption)
+            .fontWeight(.medium)
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(color.opacity(0.1)))
     }
 }
 
 // MARK: - Helper Extensions
-
 extension Text {
-    /// Returns text styled as settings description (12pt secondary).
     func settingsDescription() -> some View {
         self
             .font(.system(size: 12))

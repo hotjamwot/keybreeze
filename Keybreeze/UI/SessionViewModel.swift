@@ -49,6 +49,13 @@ final class SessionViewModel: ObservableObject {
                 controller.start()
                 installTabInterceptors()
                 startSystemWidePredictor()
+                // Trigger prediction for any existing draft text
+                if !draftText.isEmpty {
+                    controller.editorStateChanged(EditorState(
+                        textBeforeCursor: draftText,
+                        textAfterCursor: ""
+                    ))
+                }
             } else {
                 controller.stop()
                 stopSystemWidePredictor()

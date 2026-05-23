@@ -5,6 +5,7 @@ import SwiftUI
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var sessionVM: SessionViewModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -122,88 +123,7 @@ struct MenuBarContentView: View {
     }
 
     private func openSettings() {
-        SettingsWindowController.openWindow(
-            appState: appState,
-            sessionVM: sessionVM
-        )
-    }
-}
-
-// MARK: - Settings Window Controller
-
-/// Manages opening the Settings window in a separate, standalone window.
-final class SettingsWindowController: NSObject, NSWindowDelegate {
-    private static let shared = SettingsWindowController()
-    private var window: NSWindow?
-
-    static func openWindow(appState: AppState, sessionVM: SessionViewModel) {
-        // Switch to regular activation policy so the settings window
-        // appears in the Dock and Cmd+Tab switcher while open.
         AppKitLifecycle.showInDockAndCmdTab()
-        shared.open(appState: appState, sessionVM: sessionVM)
-    }
-
-    private func open(appState: AppState, sessionVM: SessionViewModel) {
-        // If window already exists, check if it's still valid (in NSApp.windows) and visible.
-        if let existingWindow = window {
-            if NSApplication.shared.windows.contains(existingWindow) {
-                if existingWindow.isVisible {
-                    existingWindow.makeKeyAndOrderFront(nil)
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                    return
-                }
-            } else {
-                // Window is no longer in the application's window list, so it's gone.
-                window = nil
-            }
-        }
-
-        let width: CGFloat = 700
-        let height: CGFloat = 520
-
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
-        let x = screenFrame.origin.x + (screenFrame.width - width) / 2
-        let y = screenFrame.origin.y + (screenFrame.height - height) / 2
-
-        let hostingView = NSHostingView(
-            rootView: SettingsView()
-                .environmentObject(appState)
-                .environmentObject(sessionVM)
-        )
-
-        let newWindow = NSWindow(
-            contentRect: NSRect(x: x, y: y, width: width, height: height),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        newWindow.title = "Keybreeze Settings"
-        newWindow.contentView = hostingView
-        newWindow.delegate = self
-        newWindow.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        self.window = newWindow
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        // 1. Clear the delegate before anything else to stop receiving events
-        window?.delegate = nil
-        
-        // 2. Release the window reference
-        window = nil
-
-        // 3. Defer the activation policy change to the next run loop
-        //    iteration. setActivationPolicy(.accessory) triggers NSApp
-        //    lifecycle notifications which can cause re-entrancy crashes
-        //    if called while SwiftUI views are mid-teardown.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            AppKitLifecycle.restoreToAccessory()
-        }
-    }
-    
-    // We keep windowDidClose empty or remove it if we use windowWillClose
-    func windowDidClose(_ notification: Notification) {
+        openWindow(id: "settings")
     }
 }

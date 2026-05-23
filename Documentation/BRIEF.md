@@ -16,18 +16,6 @@ A menu bar app that:
 
 The soul of Keybreeze is: **Keybreeze is a local-first cognitive flow amplifier that predicts and removes low-friction language work without stealing authorship or interrupting momentum. It removes friction between thought and typing.**
 
----
-
-## What Keybreeze Is NOT
-
-Keybreeze is not an inference infrastructure project. It is not a model orchestration platform. The LLM layer is replaceable plumbing — deliberately kept thin, quiet, and invisible.
-
-Keybreeze is a **prediction scheduler, a context engine, a typing flow system, and an insertion/cadence engine** — not a tool for managing inference infrastructure.
-
-External app integration is an interface problem. Typing feel is the product.
-
----
-
 ## Behavioral Specifications
 
 ### Core UX Philosophy
@@ -228,9 +216,8 @@ Backend selected via segmented control in the menu bar. Swapping backends auto-m
 | 6+ — Polish, Style Memory, Expansion | Later |
 
 **Current issues:**
-1. Settings window close still intermittently crashes (ViewBridge error, re-entrancy during teardown). Fixed by using `windowWillClose` and deferring policy change.
+1. Typing Lab text field does not register keystrokes — the playground TextField in TypingLabView does not update the `draftText` binding when the user types. Prevents ghost prediction testing in the lab. Suspected: focus issue within Form/HSplitView/hidden-title-bar window, or ghost overlay blocking input. Workaround: use system-wide mode (enable Keybreeze, type in any app) to test predictions. See Known Issues section below.
 2. Ghost overlay vertical alignment and screen positioning issues (multi-monitor support, baseline alignment).
-3. Ghost text flickering/blocking when Keybreeze itself is focused. Fixed by gating logic in `SystemWidePredictor`.
 
 ---
 
@@ -240,6 +227,12 @@ Backend selected via segmented control in the menu bar. Swapping backends auto-m
 - Prediction scheduling: <50ms overhead
 - Inference start: <100ms perceived
 - Total latency goal: 30–60ms feel
+
+---
+
+## Known Issues
+
+1. **Typing Lab text field not responding to input** — The playground TextField in TypingLabView does not register keystrokes when the user tries to type. The `sessionVM.draftText` binding does not update on keypress. This prevents ghost prediction testing in the Typing Lab. Suspected cause: focus issue with the SwiftUI TextField when nested inside a Form/HSplitView in a hidden-title-bar window, or the ghost text overlay blocking input. Workaround: use system-wide mode to test predictions in an external app instead. **Status:** Unresolved.
 
 ---
 

@@ -4,40 +4,25 @@
 
 ### Container Layout
 - Use `Form { ... }` with `.formStyle(.grouped)`
-- Transparent background: `.scrollContentBackground(.hidden)` + `.background(Color(NSColor.controlBackgroundColor))`
 - Window background: `.background(Color(NSColor.windowBackgroundColor))`
-- Control background: `Color(NSColor.controlBackgroundColor)` per-component
+- Settings background: `.scrollContentBackground(.hidden)` + `.background(Color(NSColor.controlBackgroundColor))`
 - Separator override: `.overlay(Divider().opacity(0.5), alignment: .bottom)` on section headers
 
-### Root Form Structure
-```swift
-Form {
-    Section { ... } header: { Text("...") }
-    // ...
-}
-.formStyle(.grouped)
-.scrollContentBackground(.hidden)
-.background(Color(NSColor.controlBackgroundColor))
-```
-- Every major grouping uses an explicit `Section` header
-- Custom header HStacks inject buttons into section headers (e.g., settings gear icon)
+### Component Hierarchy (The "VoiceInk" Pattern)
+- **Settings Groups**: Prefer `ExpandableSettingsRow` over nested sections for related feature toggles and their sub-settings.
+- **Data Rows**: Use `LabeledContent` for simple key-value settings (e.g., shortcuts, paths).
+- **Surface**: Rely on `Color(NSColor.controlBackgroundColor)` for primary form/setting backgrounds.
 
 ## Spacing & Layout
 Discrete spacing values: 4, 6, 8, 12, 16, 20, 32, 40
 
 | Context | Value |
 |---------|-------|
-| VStack between vertical sections | `spacing: 40` (page-level), `spacing: 20` (sub-group), `spacing: 12` (card list), `spacing: 8` (labels/inputs) |
+| VStack between vertical sections | `spacing: 40` (page-level), `spacing: 20` (sub-group) |
 | HStack between label + control | `spacing: 12` |
-| HStack between close icon + label | `spacing: 4` |
-| Toggle label inner HStack | `spacing: 4` |
-| Section expanded content indented | `padding(.leading, 4)` |
-| Section expanded content offset from toggle | `padding(.top, 12)` before sub-rows, `padding(.top, 8)` for secondary content |
+| Section expanded content offset | `padding(.top, 12)` before sub-rows, `padding(.leading, 4)` |
 | Card/Panel horizontal padding | `padding(.horizontal, 20...32)` |
 | Card/Panel vertical padding | `padding(.vertical, 16...40)` |
-| Icon + title in CompactHeroSection | `spacing: 16` vertically, `spacing: 6` between title/description |
-| Label image gap | Default (no custom override) |
-| Card inner row spacing | `spacing: 8` |
 
 ## Typography
 
@@ -130,17 +115,13 @@ LabeledContent("Export Settings") {
 ```
 - Label as first argument, value/control in trailing closure
 
+
 ### Toggle (Switch Row)
 ```swift
-Toggle("Label text") {
-    HStack(spacing: 4) {
-        Text("Label")
-        InfoTip("Helper text.")
-    }
-}
+Toggle("Label text", isOn: $binding)
 .toggleStyle(.switch)
 ```
-- Label must be `HStack(spacing: 4)` if wrapping `InfoTip`
+- Label must be `Text` or `Label`
 
 ### ExpandableSettingsRow (Disclosure-Style Expand/Collapse)
 ```swift
@@ -185,19 +166,11 @@ Button(action: { ... }) {
 .buttonStyle(.plain)
 ```
 
+
 ### InfoTip (Inline Information Popover)
-```swift
-InfoTip(
-    "Helper text.",
-    learnMoreURL: "https://..."   // optional
-)
-```
-- Icon: `info.circle.fill`, `.medium` scale, `.primary` color
-- Popover width: 280pt, padding: 14pt
-- Callout font, secondary colour
-- "Learn more" link: accent colour (separate `Text` concatenated with `+`)
-- Padding hit area: 5pt all around
-- Used inline inside `HStack(spacing: 4)` next to `Text` labels
+
+*Removed — InfoTip components are deprecated.*
+
 
 ### CompactHeroSection (Intro Banner)
 ```swift
@@ -381,16 +354,9 @@ Picker("Label text", selection: $binding) {
 - **Text input**: inline `TextField("", value: $value, …, formatter: NumberFormatter())` pattern for numeric pickers — binds to `Double` through a `NumberFormatter`
 
 ## Design Principles Summary
-1. **Form-first layout**: Settings view always a `Form` with `.grouped` style. Card-style layouts only on standalone pages like audio input.
-2. **Expandable disclosure**: Master interaction model for feature groups — controlled only by `ExpandableSettingsRow`.
-3. **NSColor wrappers**: Everywhere. Never bare `Color(.white)` or `Color(.black)`. Always `Color(NSColor.…)` for adaptive theming.
-4. **No hard-coded margins except HStack spacing**: Padding applied at component level, never globally.
-5. **InfoTip always inline**: Sparingly, only when user-facing label would otherwise be cryptic.
-6. **Glassmorphism optional**: Card gradient applies only to non-form card layouts (Audio Input page). Settings panels flat system controls.
-7. **Gradients and shadows exclusive to CardBackground**: Form-internal rows use flat surfaces from system colours.
-8. **Keybreeze SettingsView reference**: Already implemented with plain SwiftUI Form pattern — currently uses:
-   - `TabView` between "General" and "Typing Lab"
-   - plain `Form`/`.grouped`/`.scrollContentBackground(.hidden)`
-   - no background colour override (defaults to system)
-   - no `StyleConstants` or `CardBackground` usage
-   - no `InfoTip` or `ExpandableSettingsRow`
+1. **Form-first layout**: Settings view always a `Form` with `.grouped` style.
+2. **Expandable disclosure**: Use `ExpandableSettingsRow` for hierarchical settings to reduce clutter in main views.
+3. **Adaptive UI**: Use `NSColor` aliases for all background/surface colors to ensure correct Dark Mode contrast.
+4. **Clean Rows**: Prefer `LabeledContent` for static settings.
+5. **No hard-coded margins**: Padding at component level, not global.
+
