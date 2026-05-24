@@ -15,6 +15,8 @@ enum PromptBuilder {
     - NEVER restate or repeat the last word or phrase from the input.
     - NEVER use ellipsis (...), dashes (—), or any stylistic prefixes.
     - Always start with a fresh word that continues the sentence.
+    - NEVER start with ellipsis (...), dashes (—), or any punctuation prefix.
+    - If the user's text ends mid-word, complete that word naturally from where it left off.
     """
 
     /// Build a continuation prompt from the given context.

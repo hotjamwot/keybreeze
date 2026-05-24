@@ -32,6 +32,34 @@ final class SessionViewModel: ObservableObject {
     /// we still insert the suggestion via AccessibilityManager.
     private var globalEventMonitor: Any?
 
+    // MARK: Context Presets
+
+    /// Pre-built test scenarios that populate the playground with realistic text
+    /// so the user can rapidly test prediction quality across different writing contexts.
+    enum ContextPreset: String, CaseIterable {
+        case shortStory = "Short Story"
+        case emailDraft = "Email Draft"
+        case markdownNotes = "Markdown Notes"
+        case creativeWriting = "Creative Writing"
+
+        var text: String {
+            switch self {
+            case .shortStory:
+                return "Hayden was sitting on the porch swing. He watched the sunset as the colors faded into darkness."
+            case .emailDraft:
+                return "Hi Sarah,\n\nI wanted to follow up on our conversation from yesterday. I think the best approach would be to"
+            case .markdownNotes:
+                return "## Implementation Plan\n\nThe keybreeze architecture is built around three core components:\n\n1. **CompletionController** — prediction orchestrator with debouncing and streaming\n2. **LLMClient** — single HTTP client for Ollama and llama.cpp\n3. **SessionViewModel** — bridge between UI and prediction engine\n\nThe data flow starts when the user"
+            case .creativeWriting:
+                return "I remember the first time I saw the ocean at night. The waves were crashing against the shore, and the moonlight was dancing across the water in a way that made me"
+            }
+        }
+    }
+
+    /// The currently selected context preset in the picker.
+    /// Does NOT auto-populate — call `loadContextPreset()` to apply it.
+    @Published var selectedContextPreset: ContextPreset? = nil
+
     // MARK: Published State — Editor
 
     @Published var draftText = "" {
@@ -122,6 +150,20 @@ final class SessionViewModel: ObservableObject {
     /// receive stale or duplicate editor states.
     private var isAccepting = false
 
+    // MARK: Backspace Correction
+
+    /// The previous draft text value, used to detect backspace patterns for correction.
+    private var previousDraftText: String = ""
+
+    /// The original (misspelled) word before the user started backspacing into it.
+    /// Captured once when the user first backspaces into a word boundary.
+    /// Updated when the user backspaces into a *different* earlier word.
+    private var correctionCandidateWord: String?
+
+    /// The list of word-boundary counts where candidates were captured.
+    /// Used to detect when the user has backspaced into a new word.
+    private var correctionCapturedWordCount: Int = -1
+
     // MARK: Derived
 
     var effectiveModelOption: ModelOption {
@@ -182,6 +224,64 @@ final class SessionViewModel: ObservableObject {
             }
         }
 
+        // Wire correction detection: when a suggestion arrives and we have
+        // a correction candidate, check if the prediction's first complete word
+        // (after stripping stylistic prefixes like "...") differs from the
+        // original candidate word.
+        //
+        // The model often outputs "...tely" as a continuation suffix rather than
+        // the full word "absolutely". We strip leading punctuation/ellipsis and
+        // extract the first real word, then see if it completes the partial text
+        // into something different from the original candidate.
+        controller.$suggestion
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newSuggestion in
+                guard let self, let candidate = self.correctionCandidateWord else { return }
+                guard !newSuggestion.isEmpty else { return }
+
+                // Strip leading ellipsis/punctuation from the suggestion
+                // e.g. "...tely impressed" → "tely impressed"
+                let cleaned = newSuggestion.trimmingCharacters(in: CharacterSet(charactersIn: ".…—–-"))
+
+                // Get the first real word from the cleaned suggestion
+                let firstWord = cleaned
+                    .split(separator: " ")
+                    .first
+                    .flatMap(String.init) ?? cleaned
+
+                // The partial text the user has typed so far
+                let partialText = self.draftText.split(separator: " ").last.flatMap(String.init) ?? ""
+
+                // Check: does the first predicted word complete the partial text
+                // into something different from the original candidate?
+                // e.g. partialText="absolutt", firstWord="tely", combined="absolutely"
+                // vs candidate="absolutley"
+                guard !firstWord.isEmpty, !partialText.isEmpty else { return }
+
+                // Skip if the first word starts with uppercase — that means the model
+                // is starting a new sentence, not completing the current partial word.
+                guard let firstChar = firstWord.first, !firstChar.isUppercase else { return }
+
+                let combinedWord = partialText + firstWord
+
+                // Only show correction if:
+                // 1. The combined word differs from the captured candidate
+                // 2. The combined word is longer than the partial text (it's a completion)
+                // 3. The combined word starts with the partial text (it's truly a completion)
+                // 4. The first word characters are not too long (avoid matching multi-word continuations)
+                if combinedWord != candidate,
+                   combinedWord.count > partialText.count,
+                   combinedWord.hasPrefix(partialText),
+                   firstWord.count <= partialText.count + 4 {  // The suffix shouldn't be longer than the partial word itself by much
+                    self.correctionState = CorrectionState(
+                        originalWord: candidate,
+                        suggestedCorrection: combinedWord
+                    )
+                    print("BC: '\(candidate)'→'\(combinedWord)' (partial='\(partialText)'+first='\(firstWord)')")
+                }
+            }
+            .store(in: &cancellables)
+
         loadSettings()
         // Push initial params to controller
         updateControllerFromAppState()
@@ -194,6 +294,59 @@ final class SessionViewModel: ObservableObject {
 
     private func handleDraftChanged() {
         guard isEnabled, !isAccepting else { return }
+
+        // Detect backspace correction pattern: text got shorter.
+        if draftText.count < previousDraftText.count {
+            let prevWords = previousDraftText.split(separator: " ")
+            let curWords = draftText.split(separator: " ")
+
+            // Determine if user is backspacing into the last word:
+            // - Same word count but no trailing space = trimming a word
+            // - Fewer words = deleted whitespace, now on a different word
+            let isBackspacingIntoWord = !draftText.hasSuffix(" ")
+
+            if isBackspacingIntoWord, let prevLast = prevWords.last.flatMap(String.init) {
+                let curWordCount = curWords.count
+
+                if correctionCandidateWord == nil {
+                    // First capture — the previous text's last word is the candidate
+                    correctionCandidateWord = prevLast
+                    correctionCapturedWordCount = prevWords.count
+                    print("BC: candidate='\(prevLast)' words=\(prevWords.count)")
+                } else if prevWords.count < correctionCapturedWordCount {
+                    // User has backspaced across a word boundary into an earlier word
+                    // Update the candidate to the new current word
+                    correctionCandidateWord = prevLast
+                    correctionCapturedWordCount = prevWords.count
+                    correctionState = nil
+                    print("BC: updated candidate='\(prevLast)' words=\(prevWords.count)")
+                } else if prevWords.count == curWordCount, curWordCount < correctionCapturedWordCount {
+                    // Still deleting within the same word boundary, but we crossed into
+                    // a word that was from a different position
+                    correctionCandidateWord = prevLast
+                    correctionCapturedWordCount = prevWords.count
+                    correctionState = nil
+                    print("BC: updated candidate='\(prevLast)' words=\(prevWords.count)")
+                }
+            } else if isBackspacingIntoWord, prevWords.count > curWords.count {
+                // Deleted a space but not yet typing characters — clear
+                correctionCandidateWord = nil
+                correctionState = nil
+                correctionCapturedWordCount = -1
+            } else {
+                // Normal backspace (removing space between words) — clear state
+                correctionCandidateWord = nil
+                correctionState = nil
+                correctionCapturedWordCount = -1
+            }
+        } else if draftText.count > previousDraftText.count {
+            // Typing forward — clear correction state
+            correctionCandidateWord = nil
+            correctionState = nil
+            correctionCapturedWordCount = -1
+        }
+
+        previousDraftText = draftText
         controller.editorStateChanged(EditorState(
             textBeforeCursor: draftText,
             textAfterCursor: ""
@@ -214,11 +367,29 @@ final class SessionViewModel: ObservableObject {
         // Accepts one word at a time — remaining ghost text stays visible.
         // The prediction engine is suppressed via expectedTextAfterAcceptance
         // so it won't fire a new prediction until the user's next pause.
+        //
+        // Also handles backspace correction Tab/ESC when correction state is active.
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isEnabled, !self.suggestion.isEmpty else { return event }
-            if event.keyCode == 48 { // kVK_Tab
+            guard let self, self.isEnabled else { return event }
+
+            // Correction state takes priority: Tab accepts, ESC rejects
+            if self.correctionState != nil {
+                if event.keyCode == 48 { // kVK_Tab
+                    self.acceptCorrection()
+                    return nil
+                }
+                if event.keyCode == 53 { // kVK_Escape
+                    self.rejectCorrection()
+                    return nil
+                }
+                // Continued typing dismisses correction (handled in handleDraftChanged)
+                return event
+            }
+
+            // Normal prediction acceptance
+            if !self.suggestion.isEmpty, event.keyCode == 48 {
                 self.acceptWord()
-                return nil // Consume the event
+                return nil
             }
             return event
         }
@@ -260,6 +431,12 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
+    /// Applies the currently selected context preset to the playground text field.
+    func loadContextPreset() {
+        guard let preset = selectedContextPreset else { return }
+        draftText = preset.text
+    }
+
     // MARK: Actions
 
     func acceptSuggestion() {
@@ -267,7 +444,9 @@ final class SessionViewModel: ObservableObject {
 
         let trimmed = suggestion.trimmingCharacters(in: .whitespacesAndNewlines)
         let newText = draftText + trimmed + " "
+        isAccepting = true
         draftText = newText
+        isAccepting = false
         suggestion = ""
         lastSuggestion = ""
         // Tell the controller to expect this text after acceptance echo
@@ -331,6 +510,42 @@ final class SessionViewModel: ObservableObject {
             typedContext: draftText,
             generatedContinuation: acceptedWord
         ))
+    }
+
+    // MARK: Correction Actions
+
+    /// Accepts the backspace correction: replaces the partial last word with the
+    /// suggested correction, then continues prediction from the corrected text.
+    func acceptCorrection() {
+        guard let correction = correctionState else { return }
+
+        // Replace the partial last word with the correction
+        let words = draftText.split(separator: " ")
+        guard !words.isEmpty else { return }
+
+        let partialLast = String(words.last!)
+        let prefix = words.dropLast().joined(separator: " ")
+        let correctedText = prefix.isEmpty
+            ? correction.suggestedCorrection + " "
+            : prefix + " " + correction.suggestedCorrection + " "
+
+        isAccepting = true
+        draftText = correctedText
+        isAccepting = false
+
+        correctionCandidateWord = nil
+        correctionState = nil
+        suggestion = ""
+
+        print("Correction accepted: \(correction.originalWord) → \(correction.suggestedCorrection)")
+    }
+
+    /// Rejects the backspace correction: removes the correction UI and returns
+    /// to normal prediction state.
+    func rejectCorrection() {
+        correctionCandidateWord = nil
+        correctionState = nil
+        print("Correction rejected")
     }
 
     // MARK: Model Sync

@@ -15,6 +15,7 @@
 		6618DA392FBF73D60097FD61 /* SystemWidePredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618DA382FBF73D50097FD61 /* SystemWidePredictor.swift */; };
 		663E12DF2FC0A50C00916081 /* SuggestionOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */; };
 		6667D69B2FC21E620050CCBD /* TypingLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6667D69A2FC21E620050CCBD /* TypingLabView.swift */; };
+		6667D69D2FC394370050CCBD /* GhostTextStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6667D69C2FC394370050CCBD /* GhostTextStyle.swift */; };
 		6676777E2FBDC7A400B8DA3A /* InputSourceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */; };
 		667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */; };
 		667677842FBDE1C700B8DA3A /* GhostTextModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */; };
@@ -41,6 +42,7 @@
 		6618DA382FBF73D50097FD61 /* SystemWidePredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWidePredictor.swift; sourceTree = "<group>"; };
 		663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionOverlayWindow.swift; sourceTree = "<group>"; };
 		6667D69A2FC21E620050CCBD /* TypingLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLabView.swift; sourceTree = "<group>"; };
+		6667D69C2FC394370050CCBD /* GhostTextStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostTextStyle.swift; sourceTree = "<group>"; };
 		6676777D2FBDC7A400B8DA3A /* InputSourceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSourceMonitor.swift; sourceTree = "<group>"; };
 		6676777F2FBDD1CA00B8DA3A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		667677832FBDE1C700B8DA3A /* GhostTextModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostTextModifier.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 		A50000000000000000000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				6667D69C2FC394370050CCBD /* GhostTextStyle.swift */,
 				663E12DE2FC0A50C00916081 /* SuggestionOverlayWindow.swift */,
 				6618DA362FBF6DE90097FD61 /* SettingsView.swift */,
 				667677952FBE2CDD00B8DA3A /* SessionViewModel.swift */,
@@ -254,6 +257,7 @@
 				6618DA392FBF73D60097FD61 /* SystemWidePredictor.swift in Sources */,
 				6618DA332FBF35120097FD61 /* CompletionController.swift in Sources */,
 				667677802FBDD1CA00B8DA3A /* AppSettings.swift in Sources */,
+				6667D69D2FC394370050CCBD /* GhostTextStyle.swift in Sources */,
 				C10000000000000000000012 /* DiagnosticsPanelView.swift in Sources */,
 				6618DA312FBF35090097FD61 /* ModelOption.swift in Sources */,
 				C10000000000000000000016 /* AppGatingPanelView.swift in Sources */,

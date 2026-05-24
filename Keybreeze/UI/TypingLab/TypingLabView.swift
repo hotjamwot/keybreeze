@@ -79,6 +79,30 @@ struct TypingLabView: View {
     
     private var typingPlaygroundSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Test context preset picker
+            HStack {
+                Picker("Test Context", selection: $sessionVM.selectedContextPreset) {
+                    Text("Custom (type your own)").tag(nil as SessionViewModel.ContextPreset?)
+                    ForEach(SessionViewModel.ContextPreset.allCases, id: \.self) { preset in
+                        Text(preset.rawValue).tag(preset as SessionViewModel.ContextPreset?)
+                    }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .fixedSize()
+
+                Button("Load") {
+                    if sessionVM.selectedContextPreset == nil {
+                        sessionVM.draftText = ""
+                    } else {
+                        sessionVM.loadContextPreset()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(sessionVM.selectedContextPreset == nil)
+            }
+
             ZStack(alignment: .topLeading) {
                 if sessionVM.draftText.isEmpty {
                     Text("Start typing to test predictions…")

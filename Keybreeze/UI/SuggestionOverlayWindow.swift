@@ -23,9 +23,10 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
     // MARK: Configuration
 
     /// Font size matching a typical NSFont.systemFont(ofSize: ...) for body text.
-    var fontSize: CGFloat = 14
-    /// Opacity of the ghost text (matching GhostTextModifier's 0.45).
-    var ghostOpacity: CGFloat = 0.45
+    /// Sourced from `GhostTextStyle` for consistency with the playground.
+    var fontSize: CGFloat = GhostTextStyle.overlayFontSize
+    /// Opacity of the ghost text — sourced from `GhostTextStyle`.
+    var ghostOpacity: CGFloat = GhostTextStyle.overlayGhostOpacity
 
     // MARK: Visibility
 
@@ -79,7 +80,7 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
         log.debug("HostingView fittingSize: (\(hostingView.frame.size.width)x\(hostingView.frame.size.height))")
 
         // Cap width so very long predictions don't span the whole screen
-        let maxWidth: CGFloat = 600
+        let maxWidth: CGFloat = GhostTextStyle.overlayMaxWidth
         if hostingView.frame.width > maxWidth {
             hostingView.frame.size.width = maxWidth
             hostingView.frame.size = hostingView.fittingSize
@@ -206,7 +207,7 @@ struct InlineGhostTextView: View {
         Text(text)
             .font(.system(size: fontSize))
             .foregroundColor(.secondary.opacity(opacity))
-            .lineLimit(3)
+            .lineLimit(GhostTextStyle.lineLimit)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 2)
             .padding(.vertical, 1)

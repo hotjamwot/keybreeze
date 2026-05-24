@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Displays ghost text (prediction) right after the committed text, at the cursor position.
 /// Always uses an overlay to prevent view hierarchy changes that would steal focus.
+/// Visual constants are sourced from `GhostTextStyle` for consistency with the overlay.
 struct GhostTextModifier: ViewModifier {
     @Binding var draftText: String
     @Binding var suggestion: String
@@ -13,9 +14,9 @@ struct GhostTextModifier: ViewModifier {
             .overlay(alignment: .topLeading) {
                 ghostOverlayContent
                     .allowsHitTesting(false)
-                    .padding(.leading, 13)  // Match TextField padding (12) + stroke border (1)
-                    .padding(.top, 13)
-                    .padding(.trailing, 13) // Match trailing padding so text wraps at same width
+                    .padding(.leading, GhostTextStyle.leadingPadding)
+                    .padding(.top, GhostTextStyle.topPadding)
+                    .padding(.trailing, GhostTextStyle.trailingPadding)
             }
     }
 
@@ -26,30 +27,31 @@ struct GhostTextModifier: ViewModifier {
             // then strikethrough original + green suggestion follow
             HStack(spacing: 4) {
                 Text(draftText)
-                    .font(.body)
+                    .font(GhostTextStyle.font)
                     .foregroundColor(.clear)
 
                 Text(correction.originalWord)
-                    .font(.body)
-                    .foregroundColor(.gray.opacity(0.6))
-                    .strikethrough(true, color: .red)
+                    .font(GhostTextStyle.font)
+                    .foregroundColor(.gray.opacity(GhostTextStyle.correctionOriginalOpacity))
+                    .strikethrough(true, color: GhostTextStyle.correctionStrikethroughColor)
 
                 Text(correction.suggestedCorrection)
-                    .font(.body)
-                    .foregroundColor(.green)
+                    .font(GhostTextStyle.font)
+                    .foregroundColor(GhostTextStyle.correctionSuggestionColor)
             }
             .fixedSize(horizontal: false, vertical: true)
         } else {
             // Normal ghost text: invisible committed text anchors the position,
             // ghost suggestion flows right after it — even across line wraps.
             (Text(draftText)
-                .font(.body)
+                .font(GhostTextStyle.font)
                 .foregroundColor(.clear)
             + Text(suggestion)
-                .font(.body)
-                .foregroundColor(.secondary.opacity(isEnabled && !suggestion.isEmpty ? 0.45 : 0))
+                .font(GhostTextStyle.font)
+                .foregroundColor(.secondary.opacity(isEnabled && !suggestion.isEmpty
+                    ? GhostTextStyle.suggestionOpacity : 0))
             )
-            .lineLimit(3)
+            .lineLimit(GhostTextStyle.lineLimit)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
