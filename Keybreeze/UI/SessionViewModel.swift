@@ -189,6 +189,54 @@ final class SessionViewModel: ObservableObject {
         self.appState = appState
         self.controller = CompletionController(config: appState.config)
 
+        // === Wire model/backend/appState changes to controller ===
+        // When the user changes the model (via Settings or menu bar), push it
+        // to the controller immediately so the next prediction uses the new model.
+        appState.$selectedModel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Clear stale suggestion from the old model
+                self.suggestion = ""
+                self.controller.cancelPrediction()
+                self.updateControllerFromAppState()
+                // Re-trigger a prediction for the current draft with the new model
+                if self.isEnabled && !self.draftText.isEmpty {
+                    self.controller.editorStateChanged(EditorState(
+                        textBeforeCursor: self.draftText,
+                        textAfterCursor: ""
+                    ))
+                }
+                print("🔄 Model changed to: \(self.effectiveModelOption.displayName)")
+            }
+            .store(in: &cancellables)
+
+        // When the user changes the backend, update the controller's LLMClient
+        // so subsequent predictions hit the correct API endpoint.
+        appState.$selectedBackend
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.suggestion = ""
+                self.controller.cancelPrediction()
+                self.controller.updateConfig(self.appState.config)
+                self.updateControllerFromAppState()
+                print("🔄 Backend changed to: \(self.appState.selectedBackend.displayName)")
+            }
+            .store(in: &cancellables)
+
+        // When the underlying config changes (e.g. base URL), push to controller.
+        appState.$config
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newConfig in
+                guard let self else { return }
+                self.suggestion = ""
+                self.controller.cancelPrediction()
+                self.controller.updateConfig(newConfig)
+                self.updateControllerFromAppState()
+            }
+            .store(in: &cancellables)
+
         // Wire controller outputs
         controller.$suggestion
             .receive(on: DispatchQueue.main)

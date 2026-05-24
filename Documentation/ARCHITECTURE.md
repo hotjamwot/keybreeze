@@ -6,11 +6,11 @@
 
 ## What Keybreeze Is
 
-A **macOS menu bar app** providing **local, low-latency text continuation** (autocomplete). Uses **Ollama** (primary) or **llama.cpp** (secondary/experimental) over HTTP. Includes **Typing Lab** — a permanent dev environment with live playground, diagnostics, prediction history, prompt editing, and runtime tuning.
+A **macOS menu bar app** providing **local, low-latency text continuation** (autocomplete). Uses **Ollama** (primary) or **llama.cpp** (secondary) over HTTP. Includes **Typing Lab** — a permanent dev environment with live playground, diagnostics, prediction history, prompt editing, and runtime tuning.
 
 **Design intent:** continuation only, short outputs, single simplified client (`LLMClient`), relentless focus on typing feel over raw intelligence.
 
-Not an inference infrastructure project. The LLM layer is replaceable plumbing — a single `LLMClient` class that speaks the OpenAI `/v1/chat/completions` API.
+Not an inference infrastructure project. The LLM layer is replaceable plumbing — a single `LLMClient` class that speaks the OpenAI `/v1/chat/completions` API (for Ollama) or the raw `/completion` endpoint (for llama.cpp).
 
 **Core promise:** *Create uninterrupted writing flow.* Not autocomplete spam. Not AI authorship. Cognitive acceleration through anticipatory language completion.
 
@@ -21,13 +21,14 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase | Status | Goal |
 |-------|--------|------|
 | Phase 0 — Project Skeleton | ✅ Complete | Basic app shell and lifecycle management. |
-| Phase 1 — LLM Pipeline (Ollama + llama.cpp) | ✅ Complete | Core inference client built. |
+| Phase 1 — LLM Pipeline (Ollama + llama.cpp) | ✅ Complete | Core inference client + dual endpoint support. |
 | Phase 2 — Prediction Engine | ✅ Complete | Debouncing and prompt orchestration. |
 | Phase 2.5 — Ghost Text + Tuning | ✅ Complete | UI integration and parameter control. |
+| Phase 3 — Backend Process Lifecycle | 🔄 In Progress | `BackendManager` builds successfully now. Full process lifecycle for Ollama and llama.cpp implemented, including auto-boot, model switching, and clean termination. Runtime backend connectivity issues remain (see Diagnostic Snapshot). |
 | Typing Lab / Feel Engineering | ⚠️ In Progress | Ghost text constants unified. PromptBuilder updated. Backspace correction partially implemented — detection and UI exist but matching has bugs. |
-| Phase 3 — System-Wide Integration | ⏸ Paused | AX context reading + Tab accept mechanism exists but not yet reliable. |
-| Phase 4 — Ghost Overlay in External Apps | ⏸ Paused | Floating overlay for third-party apps exists but has positioning bugs. |
-| Phase 5+ — Polish, Style Memory, Expansion | Later | Refinements and feature expansion. |
+| Phase 4 — System-Wide Integration | ⏸ Paused | AX context reading + Tab accept mechanism exists but not yet reliable. |
+| Phase 5 — Ghost Overlay in External Apps | ⏸ Paused | Floating overlay for third-party apps exists but has positioning bugs. |
+| Phase 6+ — Polish, Style Memory, Expansion | Later | Refinements and feature expansion. |
 
 ---
 
@@ -35,8 +36,8 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 
 | Path | Role |
 |------|------|
-| `Keybreeze/App/` | `@main` entry, AppKit activation policies, termination cleanup. |
-| `Keybreeze/Core/` | Domain logic: `AppState`, `CompletionController`, `PredictionHistory`, `SystemWidePredictor`, `AccessibilityManager`, `InputSourceMonitor`. |
+| `Keybreeze/App/` | `@main` entry, AppKit activation policies, termination cleanup. `AppState` owns backend lifecycle. |
+| `Keybreeze/Core/` | Domain logic: `AppState`, `CompletionController`, `PredictionHistory`, `SystemWidePredictor`, `AccessibilityManager`, `InputSourceMonitor`, **`BackendManager`** (new — process lifecycle). |
 | `Keybreeze/LLM/` | `LLMClient` (HTTP client for Ollama+llama.cpp), `PromptBuilder`. |
 | `Keybreeze/UI/` | Views: `MenuBarContentView`, `SessionViewModel`, `GhostTextModifier`, `GhostTextStyle`, `SettingsView`, `SuggestionOverlayWindow`, `TypingLab/`. |
 | `Keybreeze/Utils/` | `KeybreezeLatencyLogger`. |
@@ -56,6 +57,9 @@ User types in TextField
             → PromptBuilder.continuationPrompt(context, styleNudge, maxWords)
             → PromptBuilder.systemPrompt(customPrompt, styleNudge)
             → LLMClient.streamCompletion(prompt, systemPrompt, model, ...)
+              → Branch on backend:
+                • Ollama: POST /v1/chat/completions (messages array, SSE stream)
+                • llama.cpp: POST /completion (raw prompt string, n_predict, SSE stream)
               → tokens arrive via onToken closure
                 → accumulatedTokens += token
                 → STREAMING GATE: only update suggestion after first complete word
@@ -65,6 +69,71 @@ User types in TextField
 ```
 
 **Key:** Both the playground (`GhostTextModifier`) and the system-wide overlay (`InlineGhostTextView` inside `SuggestionOverlayWindow`) now share visual constants via `GhostTextStyle` (created 24 May 2026). Previously they used duplicated values.
+
+---
+
+## Backend Lifecycle (New — 24 May 2026)
+
+### `BackendManager` (`Keybreeze/Core/BackendManager.swift`)
+
+A `@MainActor` class that manages the full lifecycle of LLM backend processes. State machine:
+
+```
+idle → starting → ready(ollama) / ready(llamaCpp)
+ready(X) → stopping → idle → starting → ready(Y)
+ready(llamaCpp) → restarting → ready(llamaCpp)   (model change)
+```
+
+**Ollama lifecycle:**
+- Health-checks `localhost:11434` first
+- If unreachable, spawns `ollama serve` via `Process()` with auto-detected binary path
+- Tracks `didWeSpawnOllama` flag — only kills the process if we started it
+- Model switching: no-op (just update the API payload string in `LLMClient`)
+
+**llama.cpp lifecycle:**
+- Spawns `llama-server` via `Process()` with tuned flags:
+  ```
+  --model <ggufPath> --host 127.0.0.1 --port 11345
+  --ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn
+  --no-chat-template --temp 0.0 --top-p 0.1
+  ```
+- Monitors stderr for startup confirmation (detects "starting server" / "model loaded" / "build info")
+- Model switching: `.terminate()` → await teardown → respawn with new GGUF path
+- Process monitoring runs on `Task.detached(priority: .background)` — never blocks main thread
+
+**Binary auto-detection (both backends):**
+1. User-configured custom path (optional, not yet exposed in UI)
+2. `/opt/homebrew/Cellar/llama.cpp/<version>/bin/llama-server` (Homebrew cellar)
+3. `/opt/homebrew/bin/ollama` / `/opt/homebrew/bin/llama-server`
+4. `/usr/local/bin/ollama` / `/usr/local/bin/llama-server`
+5. If none found, sets `lastError` with human-readable message
+
+**Termination:**
+- `terminateAll()` — async graceful: SIGTERM → 3s timeout → SIGKILL
+- `terminateAllSync()` — synchronous emergency: immediate `kill(pid, SIGKILL)` + `pkill -9 -f llama-server` safety net
+- `AppKitLifecycle.willTerminateNotification` calls `terminateAllSync()` as the authoritative teardown path
+- `AppState.deinit` is NOT relied upon (would be a zombie process trap due to potential retain cycles)
+
+### `LLMClient` Dual Endpoint Support
+
+`LLMConfig` now has a `completionEndpoint` property:
+- **Ollama:** `/v1/chat/completions` — standard OpenAI messages array with `max_tokens`
+- **llama.cpp:** `/completion` — raw text prompt with `n_predict` (not `max_tokens`)
+
+Stream parsing now handles two chunk formats:
+- `OpenAIChunk` — `choices[0].delta.content` for Ollama
+- `LlamaCompletionChunk` — `content` directly for llama.cpp raw streaming
+
+Default parameters: `temperature: 0.0`, `topP: 0.1` (deterministic autocomplete). These can still be overridden via the Typing Lab sliders.
+
+### Why llama.cpp for Gemma 4 E2B
+
+Gemma 4 E2B is one of the best models for text continuation, but when served through Ollama, it has "thinking" mode baked into the chat template. This causes:
+- First tokens in the SSE stream to be reasoning/thinking gibberish
+- TTFT inflated (first "real" token arrives after thinking completes)
+- Accumulated tokens polluted with thinking prefixes (e.g., `...What is your name`)
+
+llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses this entirely — pure raw text in, raw text out.
 
 ---
 
@@ -81,6 +150,8 @@ User types in TextField
 - Use `loadContextPreset()` to apply test context presets when selected from the picker.
 - **Keep ghost text visual constants in a single shared source** — use `GhostTextStyle` for all opacity, font, line limit, and padding values. Never duplicate them.
 - When working on backspace correction, remember that the model often outputs `...` prefix and lowercase continuation suffixes — the correction detector must strip ellipsis, handle word-boundary changes across multiple backspaces, and reject uppercase (new sentence) matches.
+- **Use `BackendManager` for all process lifecycle** — never spawn `Process()` directly elsewhere.
+- **Use `AppKitLifecycle.willTerminateNotification` as the authoritative shutdown path** — never rely on `deinit`.
 
 ### DO NOT:
 - Create new LLM provider files; use `LLMClient`.
@@ -91,6 +162,7 @@ User types in TextField
 - Create separate toggles for system-wide vs playground — always use `isEnabled`.
 - Hardcode `.lineLimit(3)` on ghost text views — always use `GhostTextStyle.lineLimit`.
 - Bypass `ContextPreset` `loadContextPreset()` to set `draftText` directly when loading test contexts.
+- Rely on `AppState.deinit` for process cleanup — use the notification-based teardown instead.
 
 ---
 
@@ -104,9 +176,23 @@ User types in TextField
 - **On-disappear:** Cancels current prediction, then defers `restoreToAccessory()` by 150ms to avoid lifecycle crash.
 
 ### `Keybreeze/App/AppState.swift`
-- **Role:** Shared application state as `@MainActor` `ObservableObject`.
+- **Role:** Shared application state as `@MainActor` `ObservableObject`. Owns `BackendManager` and wires the full backend lifecycle.
 - **Key detail:** Owns the single `SessionViewModel` instance via `private var _sessionViewModel`. The computed `var sessionViewModel` lazily creates it once.
-- Also manages: `LLMConfig`, `selectedBackend`, `selectedModel`, `availableModels`, `isOllamaRunning`, health check loop (5s interval), model catalog refresh.
+- Also manages: `LLMConfig`, `selectedBackend`, `selectedModel`, `availableModels`, model catalog refresh, backend boot/switching.
+- **Backend events:**
+  - `init()` → calls `bootCurrentBackend()` after model catalog loads
+  - `selectedBackend.didSet` → `backendManager.switchBackend(to: newBackend, ...)`
+  - `selectedModel.didSet` → for llama.cpp: restarts server with new GGUF; for Ollama: no-op (API payload update only)
+- **Wires** `AppKitLifecycle.backendManager = backendManager` for clean termination.
+
+### `Keybreeze/Core/BackendManager.swift` (NEW — 24 May 2026)
+- **Role:** `@MainActor` class managing process lifecycle for both backends.
+- **Published:** `state: BackendState`, `isReady: Bool`, `statusMessage: String`, `lastError: String?`
+- **Ollama:** Health checks `localhost:11434`. If unreachable, spawns `ollama serve`. Only kills if we spawned it (`didWeSpawnOllama` flag).
+- **llama.cpp:** Spawns `llama-server` with tuned flags (`--ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn --no-chat-template --temp 0.0 --top-p 0.1`). Monitors stderr for readiness. On model change: terminate + respawn.
+- **Binary resolution:** Auto-detects via custom path → Homebrew cellar → `/opt/homebrew/bin` → `/usr/local/bin`.
+- **Termination:** Async graceful (`terminateAll`) and sync emergency (`terminateAllSync` with immediate SIGKILL + pkill safety net).
+- **Status: Builds successfully.** 4 compilation errors fixed on 24 May 2026. Runtime issues remain with backend health check state transitions.
 
 ### `Keybreeze/Core/CompletionController.swift`
 - **Role:** Prediction orchestrator (`@MainActor`). The shared engine used by both Typing Lab and SystemWidePredictor.
@@ -138,6 +224,7 @@ User types in TextField
 - **Correction actions:** `acceptCorrection()` replaces partial word with suggested correction; `rejectCorrection()` clears the state.
 - **Correction detection (Combine subscriber):** Listens to `controller.$suggestion`, strips leading `...`/punctuation, extracts first word, appends to the current partial word, and compares against the captured candidate. Includes guards for uppercase-first-word (new sentences), length bounds, and prefix matching.
 - **Diagnostics:** `currentLatency`, `currentTTFT`, `predictionHistory` (ring buffer, 200 records).
+- **Subscribes to** `appState.$selectedBackend` and `appState.$selectedModel` to auto-clear suggestions and re-trigger predictions on change.
 
 ### `Keybreeze/UI/GhostTextStyle.swift`
 - **Role:** Single shared constants file for all ghost text visual properties (created 24 May 2026).
@@ -170,40 +257,64 @@ User types in TextField
 - **Debug panel:** Diagnostics panel shows live TTFT, total time, prediction history, and mode detection.
 
 ### `Keybreeze/LLM/LLMClient.swift`
-- **Role:** Single HTTP client for both Ollama (SSE streaming) and llama.cpp (non-streaming POST). Speaks OpenAI `/v1/chat/completions` format.
-- **Ollama:** Uses streaming SSE — tokens arrive one at a time via `onToken` closure.
-- **llama.cpp:** Uses non-streaming POST (SSE never sends terminating event, causing hangs).
+- **Role:** Single HTTP client for both Ollama (SSE streaming to `/v1/chat/completions`) and llama.cpp (SSE streaming to `/completion`).
+- **Updated 24 May 2026:** Added dual endpoint support. `LLMConfig.completionEndpoint` routes to the correct path per backend.
+- **Ollama:** Uses `OpenAIRequest` with messages array and `max_tokens`.
+- **llama.cpp:** Uses `LlamaCompletionRequest` with raw `prompt` string and `n_predict` (not `max_tokens`).
+- **Stream parsing:** Handles both `OpenAIChunk` (delta.content) and `LlamaCompletionChunk` (direct content) formats.
+- **Default parameters:** `temperature: 0.0`, `topP: 0.1` for deterministic autocomplete.
 - **Cancellation:** `cancel()` is called before every new prediction.
 
 ### `Keybreeze/LLM/PromptBuilder.swift`
 - **Role:** Builds continuation and system prompts. No LLM calls — just string construction.
-- **Default system prompt:** Explicit instructions for continuation-only, no restating input, no markdown, no stylistic prefixes. Updated 24 May 2026 with additional rules: never start with ellipsis/dashes/punctuation prefix, and if text ends mid-word, complete that word naturally from where it left off.
+- **Default system prompt:** Explicit instructions for continuation-only, no restating input, no markdown, no stylistic prefixes. Never start with ellipsis/dashes/punctuation prefix. If text ends mid-word, complete that word naturally from where it left off.
 - **Parameters:** `context` (text before cursor), `styleNudge` (optional style guidance), `maxWords` (word cap).
+
+### `Keybreeze/App/AppKitLifecycle.swift`
+- **Role:** Lightweight AppKit touchpoints. Activation policy toggles. Termination handler.
+- **Updated 24 May 2026:** `willTerminateNotification` now calls `backendManager?.terminateAllSync()` instead of brute-force `pkill -9`.
+- **Holds:** `nonisolated(unsafe) static weak var backendManager: BackendManager?` — set during `AppState.init()`.
 
 ---
 
-## Current Diagnostic Snapshot (24 May 2026)
+## Current Diagnostic Snapshot (24 May 2026 — Evening)
 
-Collected from Typing Lab with `gemma2:2b` model, `balanced` preset (temp=0.35, topP=0.85):
+### Build Status
+**Builds successfully.** All 4 compilation errors in `BackendManager.swift` have been resolved.
 
-| Metric | Value |
-|--------|-------|
-| Total Predictions | 51+ (accumulating) |
-| Accepted | 0+ (acceptance testing in progress) |
-| Ignored | 51+ |
-| Cancelled | 0 |
-| Avg TTFT | 116ms |
-| Avg Total Time | 148ms |
-| Word Cap (midType) | 3 (default) |
-| Word Cap (pause) | 5 (default) |
+### Runtime Status — Backend Not Connecting
 
-**Observations from recent testing (all presets working):**
-- **Ghost text rendering** is now unified via `GhostTextStyle` — playground and overlay use identical constants ✅
-- **Return of `...` prefix** — gemma2:2b model frequently outputs `...tely` / `...ly` / `...ation` as continuation suffixes, which the correction detector handles by stripping leading punctuation
-- **Backspace correction detection** is implemented but has false-positive issues:
-  - Model outputs lowercase suffixes (e.g. "tely", "love", "stories") that get appended to the partial word, triggering unwanted corrections even for new-sentence continuations
-  - Uppercase guard was added to filter out "It's" etc., but more refinement needed
-- **Console is noisy** — SystemWidePredictor idle poll loop logs every 500ms even when not focused
+| Issue | Detail |
+|-------|--------|
+| Ollama backend | Menu bar shows "Ollama is not running" even though Ollama is definitely running. Health check to `localhost:11434` succeeds but the app doesn't correctly transition to `ready(.ollama)` state. |
+| llama.cpp backend | Menu bar shows "backend not working". `llama-server` never spawns. Connecting to `127.0.0.1:11345` results in "Connection refused" (error -1004). The model path is resolved correctly (GGUF file exists at `/Users/haydenjweal/Movies/PROJECTS/AI/local_LLMs/llamacpp_models/gemma-4-E2B-i1-Q4_K_M.gguf`) but the server binary may not be found or spawned. |
+| Early boot | Log shows "No models available — skipping backend boot" on launch, suggesting model catalog loads after `bootCurrentBackend()` is called. |
+| Backend switching | "switchModel called but backend not ready" appears when switching models — the state machine guard is too strict. |
+
+### Observed Log Pattern
+
+```
+No models available — skipping backend boot
+SessionViewModel initialized
+isEnabled changed to true
+Ollama already running — using existing service      ← health check passes
+Switching backend from Idle to Ollama               ← Ollama detected as running
+Ollama model changed to Qwen 2.5 Coder 3B
+switchModel called but backend not ready            ← state hasn't transitioned yet
+```
+
+When switching to llama.cpp:
+```
+Switching backend from Ready (Ollama) to llama.cpp
+GGUF not found at                                    ← empty model path
+llama.cpp model changed — restarting server
+switchModel called but backend not ready
+```
+
+### SystemWidePredictor Working
+- Event tap creation fails (expected — Accessibility permissions required)
+- Idle poll loop running — correctly detecting app switches (VSCode, Xcode, Keybreeze)
+- Correctly clearing suggestions on blocked apps
 
 ---
 
@@ -218,44 +329,59 @@ Collected from Typing Lab with `gemma2:2b` model, `balanced` preset (temp=0.35, 
 - ✅ **Auto-start:** App begins predicting immediately on launch
 - ✅ **Diagnostics:** Live TTFT + total time displayed, prediction history (200-record ring buffer)
 - ✅ **Multi-line ghost overlay:** Correct alignment across line wraps (now supports 10 lines)
-- ✅ **Test context presets:** 4 pre-built scenarios (Short Story, Email Draft, Markdown Notes, Creative Writing) with Load button for rapid feel engineering
+- ✅ **Test context presets:** 4 pre-built scenarios with Load button for rapid feel engineering
 - ✅ **acceptSuggestion() isAccepting guard:** Fixed — no longer fires redundant re-prediction on full-accept
 - ✅ **Context truncation:** Only last 800 chars sent to LLM — safe for documents of any size
 - ✅ **Ghost text constants unified:** `GhostTextStyle.swift` created; both `GhostTextModifier` and `InlineGhostTextView` reference it
 - ✅ **Backspace correction detection** — basic pipeline exists: candidate capture, Combine subscriber on suggestion, Tab/ESC handling, correction state rendering in ghost text
+- ✅ **LLMClient dual endpoint support** — Ollama uses `/v1/chat/completions`, llama.cpp uses raw `/completion` with `n_predict`
+- ✅ **BackendManager process lifecycle** — full boot/switch/termination logic implemented
 
 ---
 
 ## What Still Needs Work
 
+### Critical — Runtime Backend Connectivity (24 May 2026 — Evening)
+
+1. **Ollama health check state transition** — Health check to `localhost:11434` succeeds (HTTP 200), but the menu bar still shows "Ollama is not running". The `BackendManager` state machine doesn't correctly transition to `ready(.ollama)` after a successful health check in the `boot()` path.
+
+2. **llama.cpp server not spawning** — `llama-server` never starts. The binary may not be found via auto-detection, or the spawn fails silently. Connecting to `127.0.0.1:11345` results in "Connection refused" because no server is listening.
+
+3. **Empty GGUF path on model switch** — Log shows `GGUF not found at` (empty path) when switching to llama.cpp backend. The model path isn't being passed through the backend switch flow correctly.
+
+4. **Early boot ordering** — "No models available — skipping backend boot" appears on launch because `bootCurrentBackend()` fires before the async model catalog refresh completes.
+
+5. **switchModel guard too strict** — `switchModel()` requires `.ready(let backend)` but the state may still be `.starting` or `.idle` when a model change is triggered from the UI.
+
 ### High Priority
 
-1. **Backspace correction (§7) — buggy matching** — The detection logic is implemented but produces false positives. The model outputs continuation suffixes (like `"tely"`, `"love"`, `"stories"`) that get combined with the partial word, triggering corrections even for correct continuations. 
+1. **Backend connectivity fixes** — Resolve the 5 runtime issues listed above. The app must correctly detect and connect to running backends (Ollama and llama.cpp) and show the correct status.
+
+2. **Backspace correction (§7) — buggy matching** — The detection logic is implemented but produces false positives. 
    - **Known issues:**
-     - Candidate persists across multiple word-boundary backspaces (e.g. backspacing through "love" into "absoluttly" should update the candidate)
-     - Lowercase suffix matching fires on every streaming token update — need to gate on a single stable suggestion rather than every token change
-     - The length guard `firstWord.count <= partialText.count + 4` is still too permissive
-   - **Suggested approach:** Wait for suggestion to settle (wordCount > 0, trailing space or complete word boundary), then check once rather than on every streaming token.
+     - Candidate persists across multiple word-boundary backspaces
+     - Lowercase suffix matching fires on every streaming token update
+     - The length guard is too permissive
+   - **Suggested approach:** Wait for suggestion to settle (wordCount > 0), then check once rather than on every streaming token.
    - **UI is ready:** `GhostTextModifier` renders strikethrough+green. Tab/ESC handling works.
 
-2. **Prompt tuning — model still outputs `...` prefix** — Despite the `PromptBuilder` rule "NEVER start with ellipsis", gemma2:2b frequently outputs `...tely`, `...ation`, `...ly`. This degrades both normal predictions and correction detection. Options:
-   - Increase `repeatPenalty` or adjust `temperature` to discourage this pattern
+3. **Prompt tuning — model still outputs `...` prefix** — Despite the `PromptBuilder` rule "NEVER start with ellipsis", some models frequently output `...tely`, `...ation`, `...ly`. This degrades both normal predictions and correction detection. Options:
    - Post-process suggestions in CompletionController to strip leading `...`
-   - Consider a different model (e.g. qwen2.5:0.5b, phi3:mini) that may follow instructions more precisely
+   - Consider switching to llama.cpp + `--no-chat-template` for models like Gemma 4 E2B
 
-3. **SystemWidePredictor console noise** — The idle poll loop logs "Current focused app bundle ID" every 500ms unconditionally. Should be gated behind a debug flag or throttled.
+4. **SystemWidePredictor console noise** — The idle poll loop logs "Current focused app bundle ID" every 500ms unconditionally. Should be gated behind a debug flag or throttled.
 
 ### Medium Priority
 
-4. **SystemWidePredictor gating** — `shouldProcessApp()` may incorrectly return true for Keybreeze's own bundle ID in some code paths.
+5. **SystemWidePredictor gating** — `shouldProcessApp()` may incorrectly return true for Keybreeze's own bundle ID in some code paths.
 
-5. **System-wide integration** — AX context reading works but needs: reliable cursor rect positioning across apps, Tab insertion in external apps, event tap permission handling, app gating UI. Blocked on Lab feel engineering being locked down first.
+6. **System-wide integration** — AX context reading works but needs: reliable cursor rect positioning across apps, Tab insertion in external apps, event tap permission handling, app gating UI. Blocked on Lab feel engineering being locked down first.
 
 ### Lower Priority / Blocking
 
-6. **Ghost Overlay Positioning** — Fallback logic for AX cursor rects in multi-monitor setups needs robustifying (Tier 4 computed fallback is placeholder).
+7. **Ghost Overlay Positioning** — Fallback logic for AX cursor rects in multi-monitor setups needs robustifying (Tier 4 computed fallback is placeholder).
 
-7. **Right Arrow word-by-word acceptance** — Per BEHAVIOR.md §5. Powerful but low priority.
+8. **Right Arrow word-by-word acceptance** — Per BEHAVIOR.md §5. Powerful but low priority.
 
 ---
 
@@ -263,32 +389,41 @@ Collected from Typing Lab with `gemma2:2b` model, `balanced` preset (temp=0.35, 
 
 | # | Issue | Fix | File(s) |
 |---|-------|-----|---------|
-| 1 | SessionViewModel recreated 8× on scene refresh — text disappeared | Moved to AppState as lazy strong reference | `AppState.swift`, `KeybreezeApp.swift` |
+| 1 | SessionViewModel recreated on scene refresh | Moved to AppState as lazy strong reference | `AppState.swift`, `KeybreezeApp.swift` |
 | 2 | Debounce 100ms (spec says 45ms) | Changed `debounceDelay` from 100→45ms | `CompletionController.swift` |
 | 3 | GhostTextModifier never applied to playground TextField | Added `.ghostText()` modifier chain | `TypingLabView.swift` |
-| 4 | Overlay padding misaligned with TextField (14px vs 12+1) | Changed to 13px to match content inset | `GhostTextModifier.swift` |
+| 4 | Overlay padding misaligned | Changed to 13px to match content inset | `GhostTextModifier.swift` |
 | 5 | Ghost overlay wrapping incorrectly on multi-line | Added `.padding(.trailing, 13)` | `GhostTextModifier.swift` |
-| 6 | Two separate toggles (isSchedulerActive + isSystemWideEnabled) | Consolidated to single `isEnabled` | `SessionViewModel.swift` |
-| 7 | Had to manually toggle "Active" in Lab to start predictions | Auto-start via `isEnabled = true` in init | `SessionViewModel.swift` |
+| 6 | Two separate toggles | Consolidated to single `isEnabled` | `SessionViewModel.swift` |
+| 7 | Had to manually toggle "Active" | Auto-start via `isEnabled = true` in init | `SessionViewModel.swift` |
 | 8 | "Modifying state during view update" warnings | Fixed by stable VM lifecycle | `AppState.swift` |
-| 9 | Streaming tokens displayed character-by-character ("I' → "I'm" → flicker) | Gate on first complete word or 3 tokens | `CompletionController.swift` |
-| 10 | acceptSuggestion() missing isAccepting guard — redundant re-prediction on full-accept | Added `isAccepting = true/false` around `draftText` mutation | `SessionViewModel.swift` |
-| 11 | No quick way to test predictions across different writing contexts | Added `ContextPreset` enum (4 scenarios) with dropdown picker + Load button, `loadContextPreset()` method | `SessionViewModel.swift`, `TypingLabView.swift` |
-| 12 | Inline ghost text invisible for multi-line content (line limit 3) | Changed `.lineLimit(3)` to `.lineLimit(10)` in both `GhostTextModifier` and `InlineGhostTextView` | `GhostTextModifier.swift`, `SuggestionOverlayWindow.swift` |
-| 13 | Ghost text visual constants duplicated across playground and overlay | Created `GhostTextStyle.swift` with shared constants; refactored both renderers | `GhostTextStyle.swift` (new), `GhostTextModifier.swift`, `SuggestionOverlayWindow.swift` |
-| 14 | PromptBuilder allowed model to output `...` prefix and didn't handle mid-word completion | Added rules: never start with ellipsis/punctuation, complete mid-word text naturally | `PromptBuilder.swift` |
-| 15 | Backspace correction detection not implemented | Added candidate capture in `handleDraftChanged()`, Combine subscriber for suggestion matching, `acceptCorrection()`/`rejectCorrection()` methods, Tab/ESC handling in event monitor | `SessionViewModel.swift` |
+| 9 | Streaming tokens displayed character-by-character | Gate on first complete word or 3 tokens | `CompletionController.swift` |
+| 10 | acceptSuggestion() missing isAccepting guard | Added guard around draftText mutation | `SessionViewModel.swift` |
+| 11 | No quick way to test different contexts | Added ContextPreset enum + picker + Load button | `SessionViewModel.swift`, `TypingLabView.swift` |
+| 12 | Inline ghost text line limit too small | Changed `.lineLimit(3)` to `.lineLimit(10)` | `GhostTextModifier.swift`, `SuggestionOverlayWindow.swift` |
+| 13 | Ghost text visual constants duplicated | Created `GhostTextStyle.swift` with shared constants | `GhostTextStyle.swift` (new), `GhostTextModifier.swift`, `SuggestionOverlayWindow.swift` |
+| 14 | PromptBuilder allowed `...` prefix | Added rules: never start with ellipsis/punctuation | `PromptBuilder.swift` |
+| 15 | Backspace correction not implemented | Added full detection pipeline + UI | `SessionViewModel.swift` |
+| 16 | No backend process lifecycle management | Created `BackendManager` with full boot/switch/termination | `BackendManager.swift` (new) |
+| 17 | LLMClient only supported Ollama chat endpoint | Added dual endpoint support with raw `/completion` for llama.cpp | `LLMClient.swift` |
+| 18 | App termination used brute-force pkill | Replaced with clean `terminateAllSync()` via BackendManager | `AppKitLifecycle.swift` |
+| 19 | Gemma 4 E2B thinking tokens polluted predictions | Implemented llama.cpp backend path with `--no-chat-template` | `BackendManager.swift`, `LLMClient.swift`, `AppState.swift` |
+| 20 | BackendManager 4 compilation errors blocking build | Added `CustomStringConvertible` to `BackendState`, explicit `self.` in Logger autoclosures, `do/catch` for pkill `Process.run`, `try?` for fallback health check | `BackendManager.swift` |
 
 ---
 
 ## Next Steps (Recommended Order)
 
-1. **Fix backspace correction matching** — Gate correction detection on settled suggestions (not every streaming token). Tighten the match criteria so lowercase suffix continuations don't trigger false positives. Consider comparing against prediction history rather than just the candidate word.
+1. **Fix backend connectivity** — Resolve the 5 runtime issues in §What Still Needs Work: Ollama health check state transition, llama-server spawning, empty GGUF path, early boot ordering, and switchModel guard. The app needs to actually connect to backends.
 
-2. **Post-process predictions to strip `...`** — In `CompletionController` or via a Combine subscriber, strip leading ellipsis/dashes from suggestions before they're published. This fixes both normal prediction quality and correction detection.
+2. **Test llama.cpp backend with Gemma 4 E2B** — Once the server spawns correctly, verify Gemma 4 E2B produces clean raw continuations without thinking tokens via `--no-chat-template`.
 
-3. **Reduce console noise** — Throttle SystemWidePredictor's idle poll logging to debug-only, and remove the `print("draftText changed: ...")` from SessionViewModel now that the system is stable.
+3. **Fix backspace correction matching** — Gate correction detection on settled suggestions (not every streaming token). Tighten the match criteria.
 
-4. **Polish SystemWidePredictor** — Reduce idle poll noise, fix gating for Keybreeze's own bundle ID, improve cursor rect positioning.
+4. **Post-process predictions to strip `...`** — In `CompletionController` or via a Combine subscriber, strip leading ellipsis/dashes from suggestions.
 
-5. **System-wide rollout** — Enable predictions across all apps.
+5. **Reduce console noise** — Throttle SystemWidePredictor's idle poll logging to debug-only.
+
+6. **Polish SystemWidePredictor** — Reduce idle poll noise, fix gating for Keybreeze's own bundle ID, improve cursor rect positioning.
+
+7. **System-wide rollout** — Enable predictions across all apps.

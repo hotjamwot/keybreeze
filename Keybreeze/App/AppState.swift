@@ -21,15 +21,18 @@ final class AppState: ObservableObject {
         didSet { handleBackendChange(to: selectedBackend) }
     }
 
+    /// Backend process lifecycle manager.
+    let backendManager = BackendManager()
+
     // MARK: Model Selection
 
     @Published var selectedModel: ModelOption = .defaultModel {
-        didSet { saveSelectedModel() }
+        didSet { handleModelChange(to: selectedModel) }
     }
     @Published private(set) var availableModels: [ModelOption] = []
     @Published var modelCatalogStatus = ""
 
-    // MARK: Ollama Health
+    // MARK: Ollama Health (legacy — now managed by BackendManager)
 
     @Published var isOllamaRunning = false
     private var healthCheckTask: Task<Void, Never>?
@@ -57,39 +60,100 @@ final class AppState: ObservableObject {
     // MARK: Init
 
     init() {
+        // Wire the BackendManager into AppKitLifecycle for clean termination
+        AppKitLifecycle.backendManager = backendManager
+
         loadConfig()
         loadSelectedModel()
         refreshModels()
-        startOllamaHealthCheck()
+        // Boot the selected backend after the model catalog is loaded
+        bootCurrentBackend()
     }
 
     deinit {
         healthCheckTask?.cancel()
+        // BackendManager handles teardown via AppKitLifecycle willTerminateNotification.
+        // deinit is not relied upon (see ARCHITECTURE.md gotcha #2).
     }
 
-    // MARK: Ollama Health Check
+    // MARK: Backend Boot
 
-    private func startOllamaHealthCheck() {
-        healthCheckTask?.cancel()
-        healthCheckTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.checkOllamaHealth()
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // every 5 seconds
-            }
+    /// Boot the currently selected backend with the current model.
+    /// Called on app launch and after model catalog refresh.
+    private func bootCurrentBackend() {
+        guard !availableModels.isEmpty else {
+            log.info("No models available — skipping backend boot")
+            return
         }
+
+        let modelPath: String
+        switch selectedBackend {
+        case .ollama:
+            // For Ollama, the model path isn't a file path — it's a model name used in API payload.
+            // BackendManager will handle Ollama health check / spawn.
+            modelPath = selectedModel.ollamaId.isEmpty ? selectedModel.id : selectedModel.ollamaId
+        case .llamaCpp:
+            // For llama.cpp, the model path is the GGUF file path.
+            guard let ggufPath = selectedModel.ggufPath, !ggufPath.isEmpty else {
+                let name = selectedModel.displayName
+                log.warning("No GGUF path for selected model \(name)")
+                return
+            }
+            modelPath = ggufPath
+        }
+
+        backendManager.boot(
+            backend: selectedBackend,
+            modelPath: modelPath,
+            ggufDirectory: config.llamaCppModelsDirectory
+        )
     }
 
-    private func checkOllamaHealth() async {
-        let url = config.ollamaBaseURL
-        do {
-            let (_, response) = try await URLSession.shared.data(from: url)
-            await MainActor.run {
-                self.isOllamaRunning = (response as? HTTPURLResponse)?.statusCode == 200
+    // MARK: Backend Change
+
+    private func handleBackendChange(to newBackend: LLMBackend) {
+        config.backend = newBackend
+        refreshModels()
+
+        let modelPath: String
+        switch newBackend {
+        case .ollama:
+            modelPath = selectedModel.ollamaId.isEmpty ? selectedModel.id : selectedModel.ollamaId
+        case .llamaCpp:
+            modelPath = selectedModel.ggufPath ?? ""
+        }
+
+        backendManager.switchBackend(
+            to: newBackend,
+            modelPath: modelPath,
+            ggufDirectory: config.llamaCppModelsDirectory
+        )
+    }
+
+    // MARK: Model Change
+
+    private func handleModelChange(to newModel: ModelOption) {
+        saveSelectedModel()
+
+        switch selectedBackend {
+        case .ollama:
+            // Ollama model switching is a no-op in BackendManager — just update the API payload.
+            // The SessionViewModel's Combine subscriber will trigger CompletionController
+            // to use the new model ID on the next prediction.
+            log.info("Ollama model changed to \(newModel.displayName) — no process restart needed")
+            backendManager.switchModel(
+                to: newModel.ollamaId.isEmpty ? newModel.id : newModel.ollamaId,
+                ggufDirectory: config.llamaCppModelsDirectory
+            )
+
+        case .llamaCpp:
+            // llama.cpp requires a full process restart with the new GGUF file
+            guard let ggufPath = newModel.ggufPath, !ggufPath.isEmpty else {
+                log.warning("No GGUF path for selected model \(newModel.displayName)")
+                return
             }
-        } catch {
-            await MainActor.run {
-                self.isOllamaRunning = false
-            }
+            log.info("llama.cpp model changed to \(newModel.displayName) — restarting server")
+            backendManager.switchModel(to: ggufPath, ggufDirectory: config.llamaCppModelsDirectory)
         }
     }
 
@@ -140,16 +204,9 @@ final class AppState: ObservableObject {
 
     private func selectCurrentModel(from options: [ModelOption]) {
         guard !options.isEmpty else { return }
-        if !options.contains(where: { $0.id == selectedModel.id }) {
+        if !options.contains(where: { $0.id == self.selectedModel.id }) {
             selectedModel = options[0]
         }
-    }
-
-    // MARK: Backend Change
-
-    private func handleBackendChange(to newBackend: LLMBackend) {
-        config.backend = newBackend
-        refreshModels()
     }
 
     // MARK: Persistence

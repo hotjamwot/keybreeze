@@ -17,7 +17,7 @@ final class CompletionController: ObservableObject {
 
     // MARK: Private
 
-    private let client: LLMClient
+    private var client: LLMClient
     private var config: LLMConfig
     private var activeTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
@@ -51,6 +51,14 @@ final class CompletionController: ObservableObject {
     init(config: LLMConfig) {
         self.config = config
         self.client = LLMClient(config: config)
+    }
+
+    /// Update the underlying config (e.g., when backend changes).
+    /// Recreates the LLMClient so the new API base URL takes effect.
+    func updateConfig(_ newConfig: LLMConfig) {
+        config = newConfig
+        cancelAll()
+        client = LLMClient(config: newConfig)
     }
 
     // MARK: Public API

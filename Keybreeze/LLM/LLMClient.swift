@@ -4,6 +4,9 @@ import OSLog
 /// Simplified OpenAI-compatible LLM client.
 /// Replaces the LLMProvider protocol + OllamaLLMService + LlamaCppService.
 /// Uses a single HTTP endpoint for all backends (Ollama, llama.cpp server, LM Studio, etc.)
+///
+/// For Ollama: speaks /v1/chat/completions (streaming SSE) with messages array.
+/// For llama.cpp: speaks /completion (streaming SSE) with raw prompt string and n_predict.
 @MainActor
 final class LLMClient: @unchecked Sendable {
     private let config: LLMConfig
@@ -18,38 +21,55 @@ final class LLMClient: @unchecked Sendable {
     }
 
     /// Stream completion tokens from the configured backend.
+    /// - For Ollama: uses /v1/chat/completions with messages array.
+    /// - For llama.cpp: uses /completion with raw prompt string and n_predict.
     func streamCompletion(
         prompt: String,
         systemPrompt: String? = nil,
         model: String,
         maxTokens: Int,
-        temperature: Double = 0.35,
-        topP: Double = 0.85,
+        temperature: Double = 0.0,
+        topP: Double = 0.1,
         onToken: @escaping @Sendable (String) -> Void
     ) async throws {
         cancel()
 
-        let url = config.apiBaseURL.appendingPathComponent("v1/chat/completions")
+        let url = config.apiBaseURL.appendingPathComponent(config.completionEndpoint)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 120
 
-        var messages: [OpenAIRequest.Message] = []
-        if let systemPrompt, !systemPrompt.isEmpty {
-            messages.append(.init(role: "system", content: systemPrompt))
-        }
-        messages.append(.init(role: "user", content: prompt))
+        switch config.backend {
+        case .ollama:
+            // OpenAI-style chat completions with messages array
+            var messages: [OpenAIRequest.Message] = []
+            if let systemPrompt, !systemPrompt.isEmpty {
+                messages.append(.init(role: "system", content: systemPrompt))
+            }
+            messages.append(.init(role: "user", content: prompt))
 
-        let body = OpenAIRequest(
-            model: model,
-            messages: messages,
-            maxTokens: maxTokens,
-            temperature: temperature,
-            topP: topP,
-            stream: true
-        )
-        request.httpBody = try JSONEncoder().encode(body)
+            let body = OpenAIRequest(
+                model: model,
+                messages: messages,
+                maxTokens: maxTokens,
+                temperature: temperature,
+                topP: topP,
+                stream: true
+            )
+            request.httpBody = try JSONEncoder().encode(body)
+
+        case .llamaCpp:
+            // Raw completion endpoint — no chat template, straight text in
+            let body = LlamaCompletionRequest(
+                prompt: prompt,
+                nPredict: maxTokens,
+                temperature: temperature,
+                topP: topP,
+                stream: true
+            )
+            request.httpBody = try JSONEncoder().encode(body)
+        }
 
         let task = Task { [weak self] in
             do {
@@ -65,6 +85,11 @@ final class LLMClient: @unchecked Sendable {
 
                     if let chunk = try? JSONDecoder().decode(OpenAIChunk.self, from: Data(json.utf8)) {
                         if let token = chunk.choices.first?.delta.content {
+                            onToken(token)
+                        }
+                    } else if let llamaChunk = try? JSONDecoder().decode(LlamaCompletionChunk.self, from: Data(json.utf8)) {
+                        // llama.cpp raw streaming uses content field directly
+                        if let token = llamaChunk.content, !token.isEmpty {
                             onToken(token)
                         }
                     }
@@ -153,6 +178,16 @@ struct LLMConfig: Codable, Equatable, Sendable {
         case .llamaCpp: return llamaCppBaseURL
         }
     }
+
+    /// The API endpoint path for the current backend.
+    /// - Ollama: /v1/chat/completions (OpenAI-compatible messages array)
+    /// - llama.cpp: /completion (raw text, no chat template)
+    var completionEndpoint: String {
+        switch backend {
+        case .ollama: return "/v1/chat/completions"
+        case .llamaCpp: return "/completion"
+        }
+    }
 }
 
 enum LLMBackend: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -170,6 +205,8 @@ enum LLMBackend: String, CaseIterable, Identifiable, Codable, Sendable {
 
 // MARK: - DTOs
 
+// MARK: OpenAI /v1/chat/completions
+
 private struct OpenAIRequest: Encodable {
     let model: String
     let messages: [Message]
@@ -179,8 +216,9 @@ private struct OpenAIRequest: Encodable {
     let stream: Bool
 
     enum CodingKeys: String, CodingKey {
-        case model, messages, temperature, topP = "top_p", stream
+        case model, messages, temperature, stream
         case maxTokens = "max_tokens"
+        case topP = "top_p"
     }
 
     struct Message: Encodable {
@@ -197,4 +235,28 @@ private struct OpenAIChunk: Decodable {
         let delta: Delta
     }
     let choices: [Choice]
+}
+
+// MARK: llama.cpp /completion (raw)
+
+/// llama.cpp raw completion request — no chat template, just prompt text.
+/// Uses n_predict instead of max_tokens for token limit.
+private struct LlamaCompletionRequest: Encodable {
+    let prompt: String
+    let nPredict: Int
+    let temperature: Double
+    let topP: Double
+    let stream: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case prompt, temperature, stream
+        case nPredict = "n_predict"
+        case topP = "top_p"
+    }
+}
+
+/// llama.cpp raw streaming chunk — content is a direct string, not a delta.
+private struct LlamaCompletionChunk: Decodable {
+    let content: String?
+    let stop: Bool?
 }
