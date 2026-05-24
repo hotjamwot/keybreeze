@@ -10,63 +10,68 @@ struct TypingLabView: View {
     @State private var showAdvancedSettings = false
     
     var body: some View {
-        Form {
-            Section {
-                typingPlaygroundSection
-            } header: {
-                HStack {
-                    Text("Typing Playground")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    if sessionVM.isSchedulerActive {
-                        Circle()
-                            .fill(Color(NSColor.green))
-                            .frame(width: 8, height: 8)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Section {
+                    typingPlaygroundSection
+                } header: {
+                    HStack {
+                        Text("Typing Playground")
+                            .font(.title2.weight(.semibold))
+                        Spacer()
+                        // Status indicator — not a toggle, just showing state
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(sessionVM.isEnabled ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(sessionVM.isEnabled ? "Predicting" : "Paused")
+                                .font(.caption)
+                                .foregroundStyle(sessionVM.isEnabled ? .green : .orange)
+                        }
+                    }
+                }
+                
+                Section {
+                    presetSection
+                } header: {
+                    Text("Behaviour")
+                }
+                
+                Section {
+                    controlPanelToggles
+                } header: {
+                    Text("Control Panels")
+                }
+                
+                if showDiagnostics {
+                    Section {
+                        DiagnosticsPanelView()
+                            .environmentObject(appState)
+                            .environmentObject(sessionVM)
+                    } header: {
+                        Text("Diagnostics")
+                    }
+                }
+                
+                if showParameters {
+                    Section {
+                        parameterControlsContent
+                            .padding(.vertical, 12)
+                    } header: {
+                        Text("Parameter Controls")
+                    }
+                }
+                
+                if showPromptEditor {
+                    Section {
+                        promptEditorContent
+                    } header: {
+                        Text("Prompt Editor")
                     }
                 }
             }
-            
-            Section {
-                presetSection
-            } header: {
-                Text("Behaviour")
-            }
-            
-            Section {
-                controlPanelToggles
-            } header: {
-                Text("Control Panels")
-            }
-            
-            if showDiagnostics {
-                Section {
-                    DiagnosticsPanelView()
-                        .environmentObject(appState)
-                        .environmentObject(sessionVM)
-                } header: {
-                    Text("Diagnostics")
-                }
-            }
-            
-            if showParameters {
-                Section {
-                    parameterControlsContent
-                        .padding(.vertical, 12)
-                } header: {
-                    Text("Parameter Controls")
-                }
-            }
-            
-            if showPromptEditor {
-                Section {
-                    promptEditorContent
-                } header: {
-                    Text("Prompt Editor")
-                }
-            }
+            .padding(20)
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .background(Color(NSColor.controlBackgroundColor))
     }
     
@@ -95,15 +100,15 @@ struct TypingLabView: View {
                             .fill(Color(NSColor.windowBackgroundColor))
                             .strokeBorder(Color(NSColor.separatorColor).opacity(0.3), lineWidth: 1)
                     )
-                    .ghostText(
-                        draftText: $sessionVM.draftText,
-                        suggestion: $sessionVM.suggestion,
-                        correctionState: .constant(nil),
-                        isSchedulerActive: $sessionVM.isSchedulerActive
-                    )
                     .onChange(of: sessionVM.draftText) { _, _ in
                         sessionVM.draftTextChanged()
                     }
+                    .ghostText(
+                        draftText: $sessionVM.draftText,
+                        suggestion: $sessionVM.suggestion,
+                        correctionState: $sessionVM.correctionState,
+                        isEnabled: $sessionVM.isEnabled
+                    )
             }
         }
         .padding(.vertical, 4)

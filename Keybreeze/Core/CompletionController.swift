@@ -23,7 +23,7 @@ final class CompletionController: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
-    private let debounceDelay: Duration = .milliseconds(100)
+    private let debounceDelay: Duration = .milliseconds(45)
     private var editorState: EditorState = .init(textBeforeCursor: "", textAfterCursor: "")
 
     /// The model to use for predictions — updated from AppState.
@@ -169,9 +169,17 @@ final class CompletionController: ObservableObject {
                                 self.currentTTFT = ttft
                             }
                         }
+                        let wasEmpty = accumulatedTokens.isEmpty
                         accumulatedTokens += token
-                        Task { @MainActor in
-                            self.suggestion = accumulatedTokens
+                        // Streaming threshold gating (§10): only update the visible suggestion once
+                        // we've accumulated a complete word (contains a space) or at least 3 tokens.
+                        // This prevents "dancing" partial predictions like "I'" → "I'm" → "I'm doing".
+                        let hasFullWord = accumulatedTokens.contains(" ")
+                        let hasMinimumTokens = accumulatedTokens.split(separator: " ").count >= 3
+                        if wasEmpty || hasFullWord || hasMinimumTokens {
+                            Task { @MainActor in
+                                self.suggestion = accumulatedTokens
+                            }
                         }
                     }
                 )

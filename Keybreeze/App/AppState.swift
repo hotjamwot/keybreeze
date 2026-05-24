@@ -34,6 +34,20 @@ final class AppState: ObservableObject {
     @Published var isOllamaRunning = false
     private var healthCheckTask: Task<Void, Never>?
 
+    // MARK: Session ViewModel
+
+    /// Lazily created and held as a strong reference so it survives SwiftUI
+    /// scene lifecycle events (MenuBarExtra + Window recreate body).
+    private var _sessionViewModel: SessionViewModel?
+    var sessionViewModel: SessionViewModel {
+        if let existing = _sessionViewModel {
+            return existing
+        }
+        let vm = SessionViewModel(appState: self)
+        _sessionViewModel = vm
+        return vm
+    }
+
     // MARK: Derived
 
     var canRunPrediction: Bool {

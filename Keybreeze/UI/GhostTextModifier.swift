@@ -6,21 +6,22 @@ struct GhostTextModifier: ViewModifier {
     @Binding var draftText: String
     @Binding var suggestion: String
     @Binding var correctionState: CorrectionState?
-    @Binding var isSchedulerActive: Bool
+    @Binding var isEnabled: Bool
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .topLeading) {
                 ghostOverlayContent
                     .allowsHitTesting(false)
-                    .padding(.leading, 14)  // Match TextField inner padding (12 + 2 for stroke)
-                    .padding(.top, 14)      // Match TextField inner padding
+                    .padding(.leading, 13)  // Match TextField padding (12) + stroke border (1)
+                    .padding(.top, 13)
+                    .padding(.trailing, 13) // Match trailing padding so text wraps at same width
             }
     }
 
     @ViewBuilder
     private var ghostOverlayContent: some View {
-        if isSchedulerActive, let correction = correctionState {
+        if isEnabled, let correction = correctionState {
             // Correction: invisible committed text anchors position,
             // then strikethrough original + green suggestion follow
             HStack(spacing: 4) {
@@ -46,7 +47,7 @@ struct GhostTextModifier: ViewModifier {
                 .foregroundColor(.clear)
             + Text(suggestion)
                 .font(.body)
-                .foregroundColor(.secondary.opacity(isSchedulerActive && !suggestion.isEmpty ? 0.45 : 0))
+                .foregroundColor(.secondary.opacity(isEnabled && !suggestion.isEmpty ? 0.45 : 0))
             )
             .lineLimit(3)
             .fixedSize(horizontal: false, vertical: true)
@@ -55,7 +56,7 @@ struct GhostTextModifier: ViewModifier {
 }
 
 extension View {
-    func ghostText(draftText: Binding<String>, suggestion: Binding<String>, correctionState: Binding<CorrectionState?>, isSchedulerActive: Binding<Bool>) -> some View {
-        self.modifier(GhostTextModifier(draftText: draftText, suggestion: suggestion, correctionState: correctionState, isSchedulerActive: isSchedulerActive))
+    func ghostText(draftText: Binding<String>, suggestion: Binding<String>, correctionState: Binding<CorrectionState?>, isEnabled: Binding<Bool>) -> some View {
+        self.modifier(GhostTextModifier(draftText: draftText, suggestion: suggestion, correctionState: correctionState, isEnabled: isEnabled))
     }
 }

@@ -1,96 +1,160 @@
-# Keybreeze Style Guide (Based on VoiceInk Design Reference)
+# Keybreeze Style Guide
 
-## Foundations
+> **Design philosophy**: Scandinavian-Japanese minimalism — clean, intentional, and restful. Dark tones, generous rounding, and clear hierarchy. Every element earns its place.
 
-### Container Layout
-- Use `Form { ... }` with `.formStyle(.grouped)`
-- Window background: `.background(Color(NSColor.windowBackgroundColor))`
-- Settings background: `.scrollContentBackground(.hidden)` + `.background(Color(NSColor.controlBackgroundColor))`
-- Separator override: `.overlay(Divider().opacity(0.5), alignment: .bottom)` on section headers
+---
 
-### Component Hierarchy (The "VoiceInk" Pattern)
-- **Settings Groups**: Prefer `ExpandableSettingsRow` over nested sections for related feature toggles and their sub-settings.
-- **Data Rows**: Use `LabeledContent` for simple key-value settings (e.g., shortcuts, paths).
-- **Surface**: Rely on `Color(NSColor.controlBackgroundColor)` for primary form/setting backgrounds.
+## 1. Visual Hierarchy
 
-## Spacing & Layout
-Discrete spacing values: 4, 6, 8, 12, 16, 20, 32, 40
+### Settings Window Layout
+```
+┌────────────────────────────────────────────────┐
+│ Sidebar           │  Detail                    │
+│ (150–220pt)       │  ┌──────────────────────┐  │
+│ ┌──────────────┐  │  │ Status Section       │  │
+│ │ General      │  │  │  ┌────────────────┐  │  │
+│ │ Typing Lab   │  │  │  │ Toggle         │  │  │
+│ └──────────────┘  │  │  │ Status pill    │  │  │
+│                    │  │  └────────────────┘  │  │
+│                    │  │ Statistics Card       │  │
+│                    │  │ AI Settings Section   │  │
+│                    │  │  ┌────────────────┐  │  │
+│                    │  │  │ Picker         │  │  │
+│                    │  │  │ ExpandableRow  │  │  │
+│                    │  │  │  ┌ sub-ctrl ┐  │  │  │
+│                    │  │  │  └──────────┘  │  │  │
+│                    │  │  └────────────────┘  │  │
+│                    │  └──────────────────────┘  │
+└────────────────────────────────────────────────┘
+```
 
-| Context | Value |
+### Hierarchy Levels (most prominent → least)
+| Level | Element | Visual Weight |
+|-------|---------|--------------|
+| **1** | **Sidebar tab** (selected) | Accent background tint + bold label |
+| **2** | **Section header** | `Text("Title").font(.title2).fontWeight(.semibold)` |
+| **3** | **Card/Panel** | Rounded rect with subtle background fill |
+| **4** | **Row label** | Standard body text, secondary for descriptions |
+| **5** | **Expandable sub-content** | Indented, lower opacity transition |
+| **6** | **Footer / metadata** | `.settingsDescription()` — 12pt secondary |
+
+### Navigation Pattern
+- **Sidebar tabs** (HSplitView + List) for top-level sections
+- **Form Sections** for grouping related settings
+- **ExpandableSettingsRow** for optional sub-settings under a toggle
+- **Panels** (VStack with divider) for standalone configuration blocks
+
+---
+
+## 2. Colour Palette
+
+### Dark-First Adaptive Colours (all via `NSColor` aliases)
+| Token | NSColor Alias | Usage |
+|-------|--------------|-------|
+| `surfaceBackground` | `NSColor.windowBackgroundColor` | Card, panel, sliding drawer background |
+| `controlBackground` | `NSColor.controlBackgroundColor` | Form rows, input fields |
+| `separator` | `NSColor.separatorColor.opacity(0.5)` | Dividers between sections |
+| `labelPrimary` | `NSColor.labelColor` | Primary text |
+| `labelSecondary` | `NSColor.secondaryLabelColor` | Descriptions, subtitles |
+| `labelTertiary` | `NSColor.tertiaryLabelColor` | Placeholder, empty state |
+| `labelQuaternary` | `NSColor.quaternaryLabelColor` | Subtle borders, dimmed elements |
+| `shadow` | `NSColor.shadowColor.opacity(0.1)` | Card shadows |
+
+### Accent & Semantic Colours
+| Role | Colour | Use |
+|------|--------|-----|
+| **Primary accent** | `.accentColor` | Active indicator, selected state, key stat |
+| **Success** | `.green` — `.green.opacity(0.1)` capsule bg | "Active" / "Granted" status |
+| **Warning** | `.orange` — `.orange.opacity(0.1)` capsule bg | "Required" / caution state |
+| **Error / destructive** | `.red` / `.red.opacity(0.1)` | Deletion, error messages |
+| **Inactive / neutral** | `.secondary` — `.secondary.opacity(0.1)` bg | Disabled chevrons, empty labels |
+
+### Surface Convention
+- Forms: `Color(NSColor.controlBackgroundColor)` full-background
+- Cards: `Color(NSColor.windowBackgroundColor)` with rounded rect
+- Never use hard-coded white/black — always adaptive
+
+---
+
+## 3. Spacing System
+
+### Token Scale
+```
+base: 4     sm: 8    md: 12    lg: 16    xl: 20    2xl: 32    3xl: 40
+```
+
+### Layout Spacing Chart
+| Context | Token |
 |---------|-------|
-| VStack between vertical sections | `spacing: 40` (page-level), `spacing: 20` (sub-group) |
+| VStack between page-level sections | `spacing: 40` |
+| VStack between sub-groups | `spacing: 20` |
 | HStack between label + control | `spacing: 12` |
-| Section expanded content offset | `padding(.top, 12)` before sub-rows, `padding(.leading, 4)` |
-| Card/Panel horizontal padding | `padding(.horizontal, 20...32)` |
-| Card/Panel vertical padding | `padding(.vertical, 16...40)` |
+| Expanded content inset | `.padding(.top, 12)` + `.padding(.leading, 4)` |
+| Card horizontal padding | `.padding(.horizontal, 20...32)` |
+| Card vertical padding | `.padding(.vertical, 16...40)` |
+| Stack between icon + text in card | `spacing: 12` |
+| Stack between title + description | `spacing: 6` |
+| Stack between toggle label + InfoTip | `spacing: 4` |
 
-## Typography
+---
 
-### Size Tokens
-| Name | Size | Weight | Design | Usage |
-|------|------|--------|--------|-------|
-| Display title | 22 | `.bold` | Default | Hero section title |
-| Hero icon | 28 | Default | `.hierarchical` | Icons above hero title |
-| Section heading | `.title2` (21) | `.semibold` | Default | Sub-group header |
-| Panel header | `.headline` (17) | `.semibold` | Default | Card/sheet/popover titles |
-| Body text | Default / `.body` | Default | Default | Toggle labels, button labels |
-| Description / caption | 12–14 | Default | Default | `.settingsDescription()` helper = 12pt secondary |
-| Subheadline secondary | `.subheadline` (13) / 14 | Default | Default | Helper text under card titles |
-| Settings description | 12 | Default | Default | `.settingsDescription()` on `Text` |
-| Key chip label | 12 | `.medium` | `.monospaced` | Keyboard shortcut chip |
-| Badge / badge label | 10 | `.semibold` | Default | `ProBadge` PRO badge text |
-| Caption / helper meta row | 11 | `.medium` / `.regular` | `.monospaced` | Metadata rows |
-| Body mono-digit stats | `.body.monospacedDigit()` | — | — | Statistics counters |
+## 4. Typography
 
-### Helper Extension
+### Type Scale
+| Token | Size | Weight | Design | Usage |
+|-------|------|--------|--------|-------|
+| Display title | 22 | `.bold` | `.default` | Hero/intro section title |
+| Hero icon | 28 | — | `.hierarchical` rendering | Icon above hero title |
+| Section heading | `.title2` (21) | `.semibold` | `.default` | Form section header |
+| Panel header | `.headline` (17) | `.semibold` | `.default` | Card/sheet/popover title |
+| Body | `.body` / default | `.regular` | `.default` | Toggle labels, button text |
+| Subheadline | `.subheadline` (13) | `.regular` | `.default` | Helper text under card titles |
+| Description | 12 | `.regular` | `.default` | `.settingsDescription()` helper |
+| Key chip label | 12 | `.medium` | `.monospaced` | Keyboard shortcut chips |
+| Badge text | 10 | `.semibold` | `.default` | PRO badge, status badges |
+| Caption / meta | 11 | `.medium` | `.monospaced` | Metadata rows |
+| Stat counter | `.body.monospacedDigit()` | — | — | Numeric statistics |
+
+### Helper
 ```swift
 extension Text {
     func settingsDescription() -> some View {
         self
             .font(.system(size: 12))
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 ```
 
-### Font Declarations
-- All fonts use `font(.system(size: N, weight: X, design: Y))`
-- System `.default` design is standard
-- `.monospaced` for code/keys
-- `.rounded` for keycap visuals
+### Font Declaration Pattern
+```swift
+.font(.system(size: N, weight: X, design: Y))
+```
+- Default design: `.default`
+- Monospaced: `.monospaced` (keyboard keys, code)
+- Rounded: `.rounded` (keycap visuals)
 
-## Color
+---
 
-### Adaptive Colors via NSColor Aliases
-| Role | Value |
-|------|-------|
-| Card background / surface | `Color(NSColor.windowBackgroundColor)` |
-| Control / input background | `Color(NSColor.controlBackgroundColor)` |
-| Separator/subtle border | `Color(NSColor.separatorColor).opacity(0.5)` |
-| Tertiary/dimmed label | `Color(NSColor.quaternaryLabelColor).opacity(0.3...0.5)` |
-| Shadow | `Color(NSColor.shadowColor).opacity(0.1)` |
+## 5. Corner Radii
 
-### Semantic Colors
-| Role | Usage |
-|------|-------|
-| `.primary` | Main text |
-| `.secondary` | Subtitles, helper text, disabled chevrons |
-| `.tertiary` | Loading/empty status |
-| `.accentColor` | Active indicator, speech bars, selected badge, primary tint |
-| `.blue` | Selected mode icon, primary action buttons |
-| `.green` / `.green.opacity(0.1)` + `Capsule` background | "Active" status pill |
-| `.orange` / `.orange.opacity(0.1)` + `Capsule` background | Warning states |
-| `.red` / `.red.opacity(0.1)` | Error, destructive actions |
-| `.white` on `.blue.opacity(0.8)` | `ProBadge` label background |
+| Element | Radius | Shape |
+|---------|--------|-------|
+| Card / panel background | `16` | `.RoundedRectangle` |
+| Statistics card | `10` | `.RoundedRectangle` |
+| Key chip | `4` | `.RoundedRectangle` |
+| Filler word chip | `6` | `.RoundedRectangle` |
+| Trial message banner | `12` | `.RoundedRectangle` |
+| Pro badge | `4` | `.RoundedRectangle` |
+| Status pill | Capsule | `.Capsule()` |
+| Button hit area (icon) | `28×28` circle | `.clipShape(Circle())` |
 
-### Gradient Usage
-- Only in `StyleConstants` card banking (multi-stop `LinearGradient`)
-- `topLeading → bottomTrailing`
+---
 
-## Component Library
+## 6. Component Patterns
 
-### Form + Section (Primary Settings Pattern)
+### 6.1 Form (Primary Settings Container)
 ```swift
 Form {
     Section {
@@ -103,27 +167,33 @@ Form {
 }
 .formStyle(.grouped)
 .scrollContentBackground(.hidden)
+.background(Color(NSColor.controlBackgroundColor))
 ```
-- Section headers: plain `Text`
-- Custom header content: `HStack { Text("..."); Spacer(); Button(...) }`
+- **Section headers**: plain `Text` only
+- **Section footers**: optional `.settingsDescription()` text
+- Each `Section` is a distinct group in the settings hierarchy
 
-### LabeledContent (Name-Value Rows)
+### 6.2 Sidebar (Navigation)
 ```swift
-LabeledContent("Export Settings") {
-    Button("Export") { ... }
+List {
+    ForEach(Tab.allCases) { tab in
+        Button { selection = tab } label: {
+            Label(tab.rawValue, systemImage: tab.icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(
+            selection == tab
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear
+        )
+    }
 }
+.listStyle(.sidebar)
+.frame(minWidth: 150, idealWidth: 170, maxWidth: 220)
 ```
-- Label as first argument, value/control in trailing closure
 
-
-### Toggle (Switch Row)
-```swift
-Toggle("Label text", isOn: $binding)
-.toggleStyle(.switch)
-```
-- Label must be `Text` or `Label`
-
-### ExpandableSettingsRow (Disclosure-Style Expand/Collapse)
+### 6.3 ExpandableSettingsRow (Sub-Hierarchy)
 ```swift
 ExpandableSettingsRow(
     isExpanded: $isExpanded,
@@ -133,89 +203,44 @@ ExpandableSettingsRow(
     // sub-controls: Picker, Toggle, TextField, etc.
 }
 ```
-- Entire row tappable via `.contentShape(Rectangle())` + `.onTapGesture`
-- Chevron rotates 90° when expanded; dimmed (opacity 0.4) when disabled
-- Animation: `.easeInOut(duration: 0.2)` on expansion transitions
-- Expanded content: `.opacity.combined(with: .move(edge: .top))` transition
-- Auto-expands when toggle enabled first time
+- **Entire row tappable** via `.contentShape(Rectangle())` + `.onTapGesture`
+- **Chevron**: rotates 90° when expanded; opacity 0.4 when disabled
+- **Animation**: `.easeInOut(duration: 0.2)`
+- **Transition**: `.opacity.combined(with: .move(edge: .top))`
+- **Auto-expand**: when toggle is enabled for first time
 
-### CardBackground (Frosted-Glass Panel)
+### 6.4 LabeledContent (Name-Value Rows)
 ```swift
-CardBackground(isSelected: true/false)
-```
-- `RoundedRectangle` with `cornerRadius: 16`
-- Multi-stop gradient fill (55% → 30% opacity window bg colour)
-- Gradient border from `quaternaryLabelColor`
-- Shadow: radius 10 / y 5 default, radius 15 / y 8 when selected
-- Border thickness: 1.5pt
-
-### Card Buttons (Device/Mode Selection)
-```swift
-Button(action: { ... }) {
-    VStack(alignment: .leading, spacing: 12) {
-        Image(systemName: icon)           // 28pt, .hierarchical
-            .font(.system(size: 28))
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Mode Name")              // .headline
-            Text("Description")            // .subheadline, .secondary
-        }
-    }
-    .padding()
-    .background(CardBackground(isSelected: isSelected))
+LabeledContent("Label") {
+    // trailing value / control
 }
-.buttonStyle(.plain)
 ```
+- Use for simple key-value settings (shortcuts, paths, export buttons)
+- Label as first argument, control in trailing closure
 
-
-### InfoTip (Inline Information Popover)
-
-*Removed — InfoTip components are deprecated.*
-
-
-### CompactHeroSection (Intro Banner)
+### 6.5 Card / Panel
 ```swift
-CompactHeroSection(
-    icon: "waveform",
-    title: "Audio Input",
-    description: "Configure your microphone preferences"
-)
+RoundedRectangle(cornerRadius: 10)
+    .fill(Color.accentColor.opacity(0.08))
 ```
-- Layout: `VStack(spacing: 16)` → 28pt icon → `VStack(spacing: 6)` title/description
-- Padding: 20pt vertical, full-width frame
+- Statistics cards, info panels
+- Prefer subtle opacity fills over heavy borders
+- Generous padding inside: `.padding(xl)`
 
-### ProBadge
+### 6.6 Status Pill (Capsule)
 ```swift
-ProBadge()
+Text("Active")
+    .font(.caption)
+    .fontWeight(.medium)
+    .foregroundStyle(.green)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(Capsule().fill(.green.opacity(0.1)))
 ```
-- `Text("PRO")`, 10pt semibold, white text
-- `RoundedRectangle(cornerRadius: 4)` fill: `.blue.opacity(0.8)`
-- Padding: horizontal 6pt, vertical 2pt
-- Used inline in label position of a row
+- Status indicators: Active, Granted, Required, Disabled
+- Semantic colours: green (success), orange (warning), red (error)
 
-### KeyChip (Internal to EnhancementShortcutsView)
-```swift
-KeyChip(label: "⌘")
-```
-- `Text(label)`, 12pt medium monospaced, `.contiguous` default
-- `RoundedRectangle(cornerRadius: 4).fill(controlBackgroundColor)`
-- Border: `separatorColor.opacity(0.5)`, 0.5pt strokeBorder
-
-### FillerWordChip
-```swift
-FillerWordChip(word: "um", onDelete: { ... })
-```
-- `RoundedRectangle(cornerRadius: 6)`, `.windowBackgroundColor.opacity(0.4)` fill
-- Border: `secondary.opacity(0.2)`, 1pt
-- Padding: horizontal 8pt, vertical 4pt
-- X button: `xmark.circle.fill`, turns red on hover
-- Hover animation: `.easeInOut(duration: 0.2)`
-
-### FlowLayout
-- Custom `Layout` struct placing subviews in rows, wrapping at available width
-- Used for tag/chip grids (`FillerWordChip`, prompt grid)
-- `spacing: 6` default
-
-### SlidingPanel (Side Drawer)
+### 6.7 Sliding Panel (Side Drawer)
 ```swift
 .slidingPanel(isPresented: $isPanelOpen, width: 400) {
     // panel content
@@ -224,139 +249,92 @@ FillerWordChip(word: "um", onDelete: { ... })
 - Semi-transparent `Color.black.opacity(0.1)` overlay with dismiss tap
 - Slide from off-screen via `.transition(.offset(x: panelWidth))`
 - Panel background: `NSColor.windowBackgroundColor`
-- Leading stroke divider, left shadow
+- Leading stroke divider + left shadow
 - Animation: `.smooth(duration: 0.3)`
 
-### KeyCapView (Physical Key Rendering for Shortcut Display)
-```swift
-KeyCapView(text: "⌘")
-```
-- 25pt semibold rounded font
-- Multi-layered: surface gradient → highlight gradient → border stroke → shadow → bottom-edge shadow → inner glow
-- Press state: `.scaleEffect(0.95)` with `spring(response: 0.2, dampingFraction: 0.6)`
-
-### TrialMessageView
-```swift
-TrialMessageView(message: "...", type: .warning)
-```
-- HStack icon (20pt) + title (`.headline`) + message (`.subheadline`, `.secondary`) + action buttons
-- Coloured tinted background (`orange.opacity(0.1)`, `red.opacity(0.1)`, `blue.opacity(0.1)`)
-- Buttons: `.bordered` and `.borderedProminent` style
-- Corner radius: 12
-
-### Status Pill (Capsule)
-```swift
-Label("Active", systemImage: "wave.3.right")
-    .font(.caption)
-    .foregroundStyle(.green)
-    .padding(.horizontal, 10)
-    .padding(.vertical, 4)
-    .background(Capsule().fill(.green.opacity(0.1)))
-```
-- Repeated across device selection, priority cards
-
-### Section Row Button (Icon)
-```swift
-Button {
-    ...
-} label: {
-    Image(systemName: "gear")
-        .font(.system(size: 16, weight: .medium))
-        .foregroundColor(isShowing ? .accentColor : .secondary)
-}
-.buttonStyle(.plain)
-.help("...")
-```
-- Icon size: 16pt medium
-- `.plain` style to prevent extra button chrome
-- `.help` for tooltips
-
-## Buttons
+### 6.8 Button Styles
 | Style | Modulation | Usage |
 |-------|-----------|-------|
 | `.bordered` | Default (tinted by `.tint()`) | Secondary action inside banner |
 | `.borderedProminent` | Filled accent colour | Primary action inside banner |
-| `.borderless` | Inline icon button (`.font(.system(size: 12))`) | Toolbar actions inside rows |
-| `.plain` | No chrome | All icon-only buttons, card buttons, disclosure chevrons |
-- Button hit areas in rows: 28×28pt circles (`.frame(width: 28, height: 28)` + `.clipShape(Circle())`)
+| `.borderless` | Inline icon (12pt) | Toolbar actions inside rows |
+| `.plain` | No chrome | Icon-only buttons, card buttons, chevrons |
 
-## Toggles
+---
+
+## 7. Toggles
+
 ```swift
 Toggle(isOn: $binding) {
     HStack(spacing: 4) {
-        Text("Label name")
+        Text("Label")
         InfoTip("Explanation.")
     }
 }
 .toggleStyle(.switch)
 ```
 - Label always inline to support `InfoTip`
-- Never only a `Text` label on outer Toggle
-- `.labelsHidden()` when label mirrored into custom `HStack` (seen in `ShortcutPreviewView`)
+- Never bare `Text` as outer label — wrap in HStack
 
-## Pickers
+---
+
+## 8. Pickers
+
 ```swift
-Picker("Label text", selection: $binding) {
+Picker("Label", selection: $binding) {
     ForEach(options) { option in
         Text("Display").tag(option)
     }
 }
 ```
-- Default: no explicit `.pickerStyle()` → system-selected
-- Explicit styles:
-  - `.pickerStyle(.segmented)` for inline two-or-three option
-  - `.pickerStyle(.menu)` for dropdown (≥5 options)
+- Default: system-selected style (let macOS decide)
+- Explicit `.pickerStyle(.segmented)` for 2–3 inline options
+- Explicit `.pickerStyle(.menu)` for 5+ dropdown options
+- Use `.labelsHidden()` when label shown via custom HStack
 
-## Animations
-| Pattern | Duration / Spring |
-|---------|-----------------|
+---
+
+## 9. Animations
+
+| Context | Duration / Spring |
+|---------|------------------|
 | Expand / collapse | `.easeInOut(duration: 0.2)` |
-| Sliding panel open / close | `.smooth(duration: 0.3)` |
-| Hover on chip | `.easeInOut(duration: 0.2)` |
-| Drag preview scale | `.easeInOut(duration: 0.15)` |
-| Prompt tap selection | `.spring(response: 0.3, dampingFraction: 0.7)` |
-| Key cap press | `.spring(response: 0.2, dampingFraction: 0.6)` |
-| Toggle → auto-expand delay | `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1)` |
-| Edit sheet dismiss | `.smooth(duration: 0.3)` |
-| Copied / saved feedback | default implicit animation (~0.25s) |
+| Sliding panel | `.smooth(duration: 0.3)` |
+| Hover (chips) | `.easeInOut(duration: 0.2)` |
+| Keycap press | `.spring(response: 0.2, dampingFraction: 0.6)` |
+| Toggle → auto-expand delay | `DispatchQueue.main.asyncAfter(0.1)` |
+| Copied / saved feedback | Default implicit (~0.25s) |
 
-## Iconography
-| Convention | Detail |
-|-----------|--------|
-| Size (large hero) | `.system(size: 28)`, `.hierarchical` rendering |
-| Size (section icon) | `.system(size: 20)` |
-| Size (status / badge) | `.system(size: 11)` |
-| Size (key chip) | `.system(size: 12)`, `.medium`, `.monospaced` |
-| Size (keycap) | `.system(size: 25)`, `.semibold`, `.rounded` |
-| Size (inline action icon) | `.system(size: 16)`, `.medium` |
-| Size (badge text) | `.system(size: 10)`, `.semibold` |
-| Hierarchical rendering | `.symbolRenderingMode(.hierarchical)` — default for SF Symbols |
-| Coloured rainbow override | `.foregroundStyle(.blue)` on hero icon, `.blue` on status badges |
-| Semantic SF Symbols | `chevron.right`, `info.circle.fill`, `plus.circle.fill`, `minus.circle.fill`, `xmark`, `arrow.clockwise`, `play.fill`, `mic.slash.circle.fill` |
+---
 
-## Alerts
-```swift
-.alert("Alert Title", isPresented: $show) {
-    Button("Cancel", role: .cancel) { }
-    Button("Destructive", role: .destructive) { … }
-} message: {
-    Text("Detail text.")
-}
-```
-- Destructive buttons must use `role: .destructive`
-- Confirmations use role `.cancel`
+## 10. Iconography
 
-## Data Binding
-- **State settings**: `@State` (expand/collapse flags)
-- **Shared singletons**: `@ObservedObject` or `@EnvironmentObject` (e.g., `SoundManager.shared`, `PlaybackController.shared`)
-- **User preferences**: `@AppStorage` — one per key (no wrapper struct)
-- **Sheet / panel state**: `@State private var isShowing… = false`, with `Binding(get:set:)` when sheet closes need coordination
-- **Text input**: inline `TextField("", value: $value, …, formatter: NumberFormatter())` pattern for numeric pickers — binds to `Double` through a `NumberFormatter`
+| Context | Size | Details |
+|---------|------|---------|
+| Hero / display icon | 28pt | `.hierarchical` rendering |
+| Section icon | 20pt | Standard SF Symbol |
+| Inline action icon | 16pt `.medium` | Gear, close, plus/minus |
+| Status / badge | 11pt | System default weight |
+| Key chip | 12pt `.medium` `.monospaced` | ⌘, ⌥, ⇧ |
+| Keycap | 25pt `.semibold` `.rounded` | Physical key rendering |
+| Badge text | 10pt `.semibold` | PRO label |
 
-## Design Principles Summary
-1. **Form-first layout**: Settings view always a `Form` with `.grouped` style.
-2. **Expandable disclosure**: Use `ExpandableSettingsRow` for hierarchical settings to reduce clutter in main views.
-3. **Adaptive UI**: Use `NSColor` aliases for all background/surface colors to ensure correct Dark Mode contrast.
-4. **Clean Rows**: Prefer `LabeledContent` for static settings.
-5. **No hard-coded margins**: Padding at component level, not global.
+**SF Symbol conventions:**
+- `chevron.right` — disclosure indicator
+- `info.circle.fill` — InfoTip
+- `xmark.circle.fill` — remove / delete
+- `gearshape` — settings
+- `arrow.clockwise` — reset / refresh
 
+---
+
+## 11. Design Principles
+
+1. **Form-first layout** — Settings always use `Form` with `.grouped` style.
+2. **Sidebar navigation** — Top-level sections via sidebar tabs; sub-settings via `ExpandableSettingsRow`.
+3. **Dark-adaptive** — All colours via `NSColor` aliases. Never hard-code white/black.
+4. **Minimal chrome** — No unnecessary borders, strokes, or gradients. Let spacing and rounding define groups.
+5. **Generous rounding** — Corner radii of 10–16pt for all surfaces. Softer is better.
+6. **Restrained hierarchy** — Section header → Row → Expandable sub-content. Three levels max.
+7. **Intentional spacing** — Use the token scale. Never arbitrary values.
+8. **Consistent type** — System fonts only. No custom typefaces.

@@ -35,7 +35,10 @@ final class SessionViewModel: ObservableObject {
     // MARK: Published State — Editor
 
     @Published var draftText = "" {
-        didSet { handleDraftChanged() }
+        didSet {
+            print("draftText changed: '\(draftText)'")
+            handleDraftChanged()
+        }
     }
     @Published var suggestion = ""
     @Published var statusMessage = "Ready"
@@ -43,9 +46,13 @@ final class SessionViewModel: ObservableObject {
     // MARK: Published State — Prediction Mode
 
     @Published var isPredicting = false
-    @Published var isSchedulerActive = false {
+
+    /// Master enable/disable for the entire app. When on: predictions flow to both the
+    /// Typing Lab playground AND system-wide via SystemWidePredictor. When off: everything stops.
+    @Published var isEnabled = true {
         didSet {
-            if isSchedulerActive {
+            print("isEnabled changed to \(isEnabled)")
+            if isEnabled {
                 controller.start()
                 installTabInterceptors()
                 startSystemWidePredictor()
@@ -136,6 +143,7 @@ final class SessionViewModel: ObservableObject {
     // MARK: Init
 
     init(appState: AppState) {
+        print("SessionViewModel initialized")
         self.appState = appState
         self.controller = CompletionController(config: appState.config)
 
@@ -177,12 +185,15 @@ final class SessionViewModel: ObservableObject {
         loadSettings()
         // Push initial params to controller
         updateControllerFromAppState()
+
+        // Auto-start when the app launches
+        isEnabled = true
     }
 
     // MARK: Draft Handling
 
     private func handleDraftChanged() {
-        guard isSchedulerActive, !isAccepting else { return }
+        guard isEnabled, !isAccepting else { return }
         controller.editorStateChanged(EditorState(
             textBeforeCursor: draftText,
             textAfterCursor: ""
@@ -204,7 +215,7 @@ final class SessionViewModel: ObservableObject {
         // The prediction engine is suppressed via expectedTextAfterAcceptance
         // so it won't fire a new prediction until the user's next pause.
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isSchedulerActive, !self.suggestion.isEmpty else { return event }
+            guard let self, self.isEnabled, !self.suggestion.isEmpty else { return event }
             if event.keyCode == 48 { // kVK_Tab
                 self.acceptWord()
                 return nil // Consume the event
@@ -216,7 +227,7 @@ final class SessionViewModel: ObservableObject {
         // but inserts the first accepted word via AccessibilityManager.
         // Remaining ghost words stay visible for granular acceptance.
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isSchedulerActive, !self.suggestion.isEmpty, event.keyCode == 48 else { return }
+            guard let self, self.isEnabled, !self.suggestion.isEmpty, event.keyCode == 48 else { return }
 
             let components = self.suggestion.components(separatedBy: .whitespaces)
             guard let first = components.first, !first.isEmpty else { return }

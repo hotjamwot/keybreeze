@@ -85,9 +85,12 @@ struct GeneralSettingsView: View {
         Form {
             // MARK: - Status
             Section {
-                Toggle(isOn: $sessionVM.isSchedulerActive) {
+                Toggle(isOn: Binding(
+                    get: { sessionVM.isEnabled },
+                    set: { sessionVM.isEnabled = $0 }
+                )) {
                     HStack(spacing: 4) {
-                        Text(sessionVM.isSchedulerActive ? "Disable Keybreeze" : "Enable Keybreeze")
+                        Text(sessionVM.isEnabled ? "Keybreeze is On" : "Keybreeze is Off")
                     }
                 }
                 .toggleStyle(.switch)

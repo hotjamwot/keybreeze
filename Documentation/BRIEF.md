@@ -1,10 +1,14 @@
-# Keybreeze — Product Brief
+# Keybreeze — Project Brief
 
-*Local-first macOS menu bar app. Continuously predicts the next words you were already about to type, without interrupting flow.*
+*The purpose of this document is to outline the high-level vision, mission, and "soul" of Keybreeze. It serves as the primary reference for the project's philosophy, with pointers to the detailed technical and behavioral specifications. Any developer or AI agent working on Keybreeze should consult this document to understand the "why" behind the project, ensuring all new features and technical decisions align with our core goal of creating an invisible, non-intrusive cognitive flow amplifier.*
+
+*For the full behavioral specification (including the implementation status of every feature), see **[BEHAVIOR.md](./BEHAVIOR.md)**. For technical architecture, file-by-file ground truth, and AI agent rules, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.*
 
 ---
 
 ## Product Definition
+
+*Local-first macOS menu bar app. Continuously predicts the next words you were already about to type, without interrupting flow.*
 
 A menu bar app that:
 - Runs fully offline (Ollama primary, llama.cpp optional)
@@ -16,12 +20,17 @@ A menu bar app that:
 
 The soul of Keybreeze is: **Keybreeze is a local-first cognitive flow amplifier that predicts and removes low-friction language work without stealing authorship or interrupting momentum. It removes friction between thought and typing.**
 
-## Behavioral Specifications
+---
+
+## Behavioral Summary
+
+For the complete behavioral specification (17 sections covering prediction lifecycle, keystroke timing, display rules, acceptance behavior, prediction invalidation, backspace correction, prediction hierarchy, UI stability, streaming behavior, cancellation, model priorities, context strategy, performance targets, and the full trust model), refer to **[BEHAVIOR.md](./BEHAVIOR.md)**.
+
+Key principles summarized:
 
 ### Core UX Philosophy
 
 The assistant must feel:
-
 * Invisible
 * Immediate
 * Non-intrusive
@@ -31,7 +40,6 @@ The assistant must feel:
 * Never "thinking"
 
 The user should feel like:
-
 > "The computer already knows what I'm trying to say."
 
 Latency is the primary feature. Not intelligence.
@@ -68,7 +76,6 @@ Predictions disappear instantly (no fade animation) when:
 ### Backspace Correction (Critical Feature)
 
 When user backspaces through a misspelled or incorrect word, the system detects hesitation and infers intended correction:
-
 - **Incorrect word:** Greyed out with red strikethrough
 - **Suggested correction:** Green inline replacement
 - **Tab:** Accepts corrected word instantly
@@ -82,25 +89,6 @@ The system should prioritize:
 2. Current paragraph context
 3. Writing style continuity
 4. Global semantic reasoning (least important)
-
-### UI Stability Rules
-
-The UI must NEVER:
-- Jump vertically
-- Resize while typing
-- Shift layout
-- Animate predictions heavily
-- Introduce modal interruptions
-
-Predictive typing is peripheral cognition. Anything flashy destroys flow state.
-
-### Cancellation Behavior
-
-Every new keystroke must:
-- Immediately cancel current inference
-- Immediately begin next prediction cycle
-
-No queued generations. Stale predictions are worse than missing predictions.
 
 ### Model Behavior Priorities
 
@@ -148,19 +136,33 @@ Because predictive typing is fundamentally a motor-control experience, not a con
 
 ---
 
-## Project Structure
+## Current Implementation Status
+
+For a full itemised checklist of all 19 desired behaviour outcomes (with per-feature status: ✅, 🔄 Partial, ❌ Not Implemented), see the **Desired Behavior Outcomes** table in **[BEHAVIOR.md](./BEHAVIOR.md)**.
+
+In summary:
+- **Tab acceptance, prediction invalidation, latency monitoring, and acceptance history** are the most mature features.
+- **System-wide prediction, ghost overlay, app gating, and IME safety** are implemented but have known bugs.
+- **Backspace correction** and **Right Arrow word-by-word acceptance** are not yet implemented.
+- **Many features** are marked "Implemented but buggy" — the core pipeline works but edge cases remain.
+
+---
+
+## Project Structure (Current)
 
 ```
 Keybreeze/
-├── App/              KeybreezeApp.swift, AppKit lifecycle, termination cleanup
-├── Core/             AppState, ModelRegistry, PredictionEngine, Scheduler, History, ShadowPredictor
-├── LLM/              5 files: LLMProvider protocol, LLMBackend enum + LLMConfig,
-│                     OllamaLLMService, LlamaCppService, PromptBuilder
-├── UI/               MenuBarContentView, PredictionSessionViewModel, SettingsView, TypingLab/ (5 views)
-├── Utils/            WordLimiter, Debouncer, LatencyLogger
+├── App/               KeybreezeApp.swift, AppKit lifecycle, termination cleanup
+├── Core/              AppState, CompletionController, SystemWidePredictor,
+│                      PredictionHistory, AccessibilityManager, InputSourceMonitor
+├── LLM/               LLMClient (HTTP client for Ollama + llama.cpp), PromptBuilder
+├── UI/                MenuBarContentView, SessionViewModel, SettingsView, GhostTextModifier,
+│                      SuggestionOverlayWindow (floating overlay for 3rd-party apps),
+│                      TypingLab/ (playground, diagnostics, gating panel)
+├── Utils/             KeybreezeLatencyLogger
 ```
 
-The LLM layer is intentionally minimal — no infrastructure-style layering, no over-separated config objects, no duplicated backend-specific logic.
+The LLM layer is intentionally minimal — a single `LLMClient` class that speaks the OpenAI `/v1/chat/completions` API format to both Ollama and llama.cpp. No infrastructure-style layering, no over-separated config objects, no duplicated backend-specific logic.
 
 ---
 
@@ -168,71 +170,35 @@ The LLM layer is intentionally minimal — no infrastructure-style layering, no 
 
 | Backend | Service | Protocol | Model Source |
 |---------|---------|----------|-------------|
-| Ollama (primary) | `OllamaLLMService` | SSE `/api/generate` | `OllamaLLMService.fetchInstalledTags(baseURL:)` from `GET /api/tags` |
-| llama.cpp (experimental) | `LlamaCppService` | Non-streaming `POST /completion` | `LlamaCppService.scanModels(directory:)` scans GGUF directory |
+| Ollama (primary) | `LLMClient` | SSE `/v1/chat/completions` | `GET /api/tags` |
+| llama.cpp (experimental) | `LLMClient` | Non-streaming `POST /completion` | Scans GGUF directory |
 
-Both conform to the shared `LLMProvider` protocol (13 lines). Configuration is a single flat `LLMConfig` struct — no fragmented sub-configs.
-
-Backend selected via segmented control in the menu bar. Swapping backends auto-manages the llama.cpp server lifecycle internally (no external process manager abstraction).
+Both backends are served by a single `LLMClient` class. Configuration is a single flat `LLMConfig` struct — no fragmented sub-configs. Backend selected via segmented control in the menu bar.
 
 ---
 
-## Key Components
+## Key Components (Current)
 
-- **PredictionScheduler** — debounced midType (150ms) / pause (450ms) loop. Cancels stale jobs, passes runtime prompt overrides.
-- **PredictionEngine** — single active stream, word cap, cooperative cancellation.
-- **Typing Lab** — permanent dev environment: live playground, diagnostics panel, prediction history (ring buffer, 200 records), runtime prompt editing, parameter sliders, behaviour presets.
-- **ShadowPredictor** — silent background predictions for quality evaluation.
-- **ModelRegistry/ModelOption** — per-model presets (verbosity, strictness, temperature, topP, repeatPenalty, etc.). GGUF models get sensible defaults.
-- **LlamaCppService** — owns the full `llama-server` lifecycle internally (spawn, health-check via `/health`, SIGTERM→SIGKILL). Exposes `serverState` for UI readiness but keeps all process management private. Also provides static `scanModels()` for the GGUF catalog.
+- **CompletionController** (`@MainActor`) — prediction orchestrator. Takes `EditorState`, invokes `PromptBuilder` → `LLMClient` → streams tokens. Handles cancellation, debouncing (45ms), and latency tracking (TTFT + total time).
+- **SystemWidePredictor** — bridges AX context (via `AccessibilityManager`) into `CompletionController` for global prediction. Uses `CGEventTap` (instant) and 500ms idle poll (fallback). Owns `SuggestionOverlayWindowController`. Respects app gating and IME safety.
+- **SessionViewModel** — bridge between UI and prediction engine. Holds `@Published` state for editor, prediction, tuning, gating, and diagnostics. Supports Playground (Lab) and System-wide modes.
+- **GhostTextModifier** — SwiftUI `ViewModifier` for Typing Lab. Overlays grey/translucent ghost text.
+- **SuggestionOverlayWindowController** — borderless transparent `NSWindow` at `popUpMenu` level for ghost overlay in external apps. Click-through, no focus steal.
+- **PredictionHistory** — ring buffer (200 records) with full metadata per prediction.
+- **Typing Lab** — permanent dev environment: live playground, diagnostics panel, prediction history, runtime prompt editing, parameter sliders, app gating panel.
 
 ---
 
 ## Design Decisions
 
-- **LLM layer is deliberately thin.** No `LlamaCppProcessManager`, `OllamaConfiguration`, or `LLMConfiguration` files exist as top-level abstractions. Process management and model catalog scanning are internalized within the services.
+- **LLM layer is deliberately thin.** Single `LLMClient` class handles both Ollama and llama.cpp. Process management for llama.cpp is encapsulated within `LLMClient`.
 - **Ollama is the primary backend.** It solves model management, process lifecycle, loading, serving, caching, and compatibility — we leverage this rather than rebuilding infrastructure ourselves.
-- **llama.cpp is secondary/experimental.** Its lifecycle complexity is internalised within `LlamaCppService` so it doesn't shape the app architecture.
+- **llama.cpp is secondary/experimental.** Its lifecycle complexity is internalised within `LLMClient` so it doesn't shape the app architecture.
 - **Sandbox disabled** — needed for file access to GGUF directory and `Process()` spawning.
 - **Non-streaming for llama.cpp** — SSE never sends a terminating event, causing hangs. Non-streaming delivers full response in one HTTP exchange.
 - **Runtime tuning** — all parameters overridable via sliders. Aggression presets for quick iteration.
 - **Prediction history** — every prediction (accepted/ignored/cancelled) recorded with TTFT, total time, parameters.
 - **No animation** — ghost text is static overlay. No flicker, no transitions.
-
----
-
-## Phases
-
-| Phase | Status |
-|-------|--------|
-| 0 — Project Skeleton | ✅ |
-| 1 — LLM Pipeline (Ollama + llama.cpp) | ✅ |
-| 2 — Prediction Engine | ✅ |
-| 2.5 — Ghost Text + Tuning | ✅ |
-| Typing Lab / Feel Engineering | ✅ |
-| 3 — App Integration for all Mac apps | ✅ |
-| 4 — Ghost Overlay in External Apps | ✅ |
-| 5 — Tab Accept System (word-by-word via Tab) | ✅ |
-| 6+ — Polish, Style Memory, Expansion | Later |
-
-**Current issues:**
-1. Typing Lab text field does not register keystrokes — the playground TextField in TypingLabView does not update the `draftText` binding when the user types. Prevents ghost prediction testing in the lab. Suspected: focus issue within Form/HSplitView/hidden-title-bar window, or ghost overlay blocking input. Workaround: use system-wide mode (enable Keybreeze, type in any app) to test predictions. See Known Issues section below.
-2. Ghost overlay vertical alignment and screen positioning issues (multi-monitor support, baseline alignment).
-
----
-
-## Performance Targets
-
-- Keystroke → UI update: <10ms
-- Prediction scheduling: <50ms overhead
-- Inference start: <100ms perceived
-- Total latency goal: 30–60ms feel
-
----
-
-## Known Issues
-
-1. **Typing Lab text field not responding to input** — The playground TextField in TypingLabView does not register keystrokes when the user tries to type. The `sessionVM.draftText` binding does not update on keypress. This prevents ghost prediction testing in the Typing Lab. Suspected cause: focus issue with the SwiftUI TextField when nested inside a Form/HSplitView in a hidden-title-bar window, or the ghost text overlay blocking input. Workaround: use system-wide mode to test predictions in an external app instead. **Status:** Unresolved.
 
 ---
 
@@ -242,4 +208,4 @@ Keybreeze should feel like *assisted momentum* — not autocomplete, not AI co-w
 
 Every architectural decision serves one goal: **the user feels like they are writing better and faster, not like an AI is writing for them.**
 
-This philosophy is guided by the detailed behavioral specifications outlined above, ensuring that every aspect of the system—from keystroke response timing to prediction display and acceptance behavior—works in service of an invisible, immediate, and non-intrusive typing experience.
+This philosophy is guided by the detailed behavioral specifications in **[BEHAVIOR.md](./BEHAVIOR.md)** and the technical architecture in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.

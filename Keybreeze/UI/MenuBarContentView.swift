@@ -16,25 +16,24 @@ struct MenuBarContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
 
-            // 2. Active toggle button
+            // 2. Enable/Disable toggle
             Button(action: {
-                sessionVM.isSchedulerActive.toggle()
+                sessionVM.isEnabled.toggle()
             }) {
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(sessionVM.isSchedulerActive ? Color.green : Color.orange)
+                        .fill(sessionVM.isEnabled ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
-                    Text(sessionVM.isSchedulerActive ? "Active" : "Enable Keybreeze")
+                    Text(sessionVM.isEnabled ? "Active" : "Enable Keybreeze")
                         .font(.caption2)
-                        .foregroundStyle(sessionVM.isSchedulerActive ? .green : .orange)
+                        .foregroundStyle(sessionVM.isEnabled ? .green : .orange)
                 }
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 3. Focused app info (removed - always system-wide when active)
-            // 4. Settings
+            // 3. Settings
             Button {
                 openSettings()
             } label: {
@@ -48,7 +47,7 @@ struct MenuBarContentView: View {
             Divider()
                 .padding(.vertical, 2)
 
-            // 6. Backend selector
+            // 4. Backend selector
             Picker("Backend", selection: $appState.selectedBackend) {
                 ForEach(LLMBackend.allCases) { backend in
                     Text(backend.displayName).tag(backend)
@@ -76,19 +75,19 @@ struct MenuBarContentView: View {
                 .padding(.bottom, 6)
             }
 
-            // 8. Service status indicator
+            // 5. Service status indicator
             HStack(spacing: 4) {
                 Circle()
                     .fill(appState.isOllamaRunning ? Color.green : Color.red)
                     .frame(width: 6, height: 6)
-                Text(appState.isOllamaRunning ? "Active" : "Inactive")
+                Text(appState.isOllamaRunning ? "Ollama Active" : "Ollama Inactive")
                     .foregroundStyle(appState.isOllamaRunning ? .green : .red)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            // 9. Suggestion preview (when active and a suggestion exists)
-            if sessionVM.isSchedulerActive && !sessionVM.suggestion.isEmpty {
+            // 6. Suggestion preview (when enabled and a suggestion exists)
+            if sessionVM.isEnabled && !sessionVM.suggestion.isEmpty {
                 HStack(spacing: 4) {
                     Text("→")
                         .font(.caption)
@@ -105,7 +104,7 @@ struct MenuBarContentView: View {
             Divider()
                 .padding(.vertical, 2)
 
-            // 10. Quit
+            // 7. Quit
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {

@@ -3,19 +3,6 @@ import SwiftUI
 @main
 struct KeybreezeApp: App {
     @StateObject private var appState = AppState()
-    
-    /// The session VM is lazily created and stored as a strong reference so it outlives
-    /// any single view's lifetime (needed for the separate settings/Typing Lab window).
-    @State private var sessionVM: SessionViewModel?
-
-    private var resolvedSessionVM: SessionViewModel {
-        if let existing = sessionVM {
-            return existing
-        }
-        let vm = SessionViewModel(appState: appState)
-        sessionVM = vm
-        return vm
-    }
 
     init() {
         AppKitLifecycle.configureMenuBarAgentApp()
@@ -25,7 +12,7 @@ struct KeybreezeApp: App {
         MenuBarExtra("Keybreeze", systemImage: "wind") {
             MenuBarContentView()
                 .environmentObject(appState)
-                .environmentObject(resolvedSessionVM)
+                .environmentObject(appState.sessionViewModel)
         }
         .menuBarExtraStyle(.menu)
 
@@ -34,13 +21,13 @@ struct KeybreezeApp: App {
         Window("Keybreeze Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
-                .environmentObject(resolvedSessionVM)
+                .environmentObject(appState.sessionViewModel)
                 .onAppear {
                     AppKitLifecycle.showInDockAndCmdTab()
                 }
                 .onDisappear {
                     // Cancel predictions to prevent stale callbacks during teardown
-                    resolvedSessionVM.cancelCurrentPrediction()
+                    appState.sessionViewModel.cancelCurrentPrediction()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         AppKitLifecycle.restoreToAccessory()
                     }

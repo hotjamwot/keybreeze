@@ -264,11 +264,12 @@ final class SystemWidePredictor {
 
         // 2. Gating checks
         log.debug("Current focused app bundle ID: \(bundleID)")
+        
         if bundleID == "app.keybreeze.Keybreeze" {
-            setPaused(reason: "Keybreeze focused")
+            // log.debug("Current app is Keybreeze — ignoring")
             return
         }
-
+        
         guard shouldProcessApp(bundleID) else {
             if bundleID != lastAppBundleID {
                 log.debug("App switch to blocked app '\(bundleID)' — clearing suggestion")
@@ -454,8 +455,7 @@ final class SystemWidePredictor {
         focusedAppName = appName(for: bundleID)
 
         if bundleID == "app.keybreeze.Keybreeze" {
-            log.debug("Keydown in Keybreeze itself — skipping")
-            setPaused(reason: "Keybreeze focused")
+            // log.debug("Current app is Keybreeze — ignoring")
             return false
         }
 
