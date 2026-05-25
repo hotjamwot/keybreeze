@@ -236,9 +236,7 @@ final class BackendManager {
                 "--threads", "4",
                 "--ubatch-size", "256",
                 "--flash-attn", "on",
-                "--no-chat-template",
-                "--temp", "0.0",
-                "--top-p", "0.1",
+                "--no-jinja",
             ]
             process.standardOutput = Pipe() // silently consume stdout
 

@@ -108,11 +108,17 @@ final class SystemWidePredictor {
         self.overlay = SuggestionOverlayWindowController()
 
         // Observe suggestion changes from the controller and show/hide overlay.
+        // Only show the overlay for external apps — Keybreeze's Typing Lab has its
+        // own inline ghost text via GhostTextModifier.
         controller.$suggestion
             .receive(on: DispatchQueue.main)
             .sink { [weak self] suggestion in
                 guard let self else { return }
                 if self.isPaused { return }
+                // Don't show overlay for Keybreeze itself — the Typing Lab handles its own ghost text
+                if self.focusedAppBundleID == "app.keybreeze.Keybreeze" {
+                    return
+                }
                 if suggestion.isEmpty {
                     self.log.debug("Overlay: suggestion cleared → hiding")
                     self.overlay.hide()

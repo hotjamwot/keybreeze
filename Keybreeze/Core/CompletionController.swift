@@ -126,10 +126,12 @@ final class CompletionController: ObservableObject {
         statusMessage = "Predicting..."
 
         let context = trimContext(state.textBeforeCursor, maxChars: 800)
+        let isRaw = config.backend == .llamaCpp
         let prompt = PromptBuilder.continuationPrompt(
             context: context,
             styleNudge: styleNudge,
-            maxWords: maxWords
+            maxWords: maxWords,
+            raw: isRaw
         )
         let systemPrompt = PromptBuilder.systemPrompt(
             customPrompt: customSystemPrompt,

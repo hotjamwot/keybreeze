@@ -24,8 +24,19 @@ enum PromptBuilder {
     ///   - context: Text before cursor.
     ///   - styleNudge: Optional style guidance.
     ///   - maxWords: Maximum words to predict.
+    ///   - raw: When true, returns the context with NO instruction boilerplate.
+    ///     Use for raw `/completion` endpoints (llama.cpp) where the model
+    ///     continues the text directly without a chat template.
     /// - Returns: The prompt string to send to the LLM.
-    static func continuationPrompt(context: String, styleNudge: String = "", maxWords: Int = 8) -> String {
+    static func continuationPrompt(context: String, styleNudge: String = "", maxWords: Int = 8, raw: Bool = false) -> String {
+        if raw {
+            // Raw mode: return context with only a style suffix if provided.
+            // No "Continue the next few words" — the model simply continues the text.
+            if !styleNudge.isEmpty {
+                return context + "\n\nStyle: \(styleNudge)"
+            }
+            return context
+        }
         var prompt = context
         if !styleNudge.isEmpty {
             prompt += "\n\nStyle: \(styleNudge)"
