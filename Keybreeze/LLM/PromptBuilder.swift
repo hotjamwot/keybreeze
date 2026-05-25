@@ -24,18 +24,40 @@ enum PromptBuilder {
     ///   - context: Text before cursor.
     ///   - styleNudge: Optional style guidance.
     ///   - maxWords: Maximum words to predict.
-    ///   - raw: When true, returns the context with NO instruction boilerplate.
-    ///     Use for raw `/completion` endpoints (llama.cpp) where the model
-    ///     continues the text directly without a chat template.
+    ///   - raw: When true, formats as raw text for the llama.cpp `/completion`
+    ///     endpoint with `--no-jinja`. No chat template tokens or instructions
+    ///     are added — just the bare context. The model will complete it naturally
+    ///     as a text continuation (not a chatbot response).
+    ///   - systemPromptOverride: Ignored in raw mode (no system prompt is sent).
     /// - Returns: The prompt string to send to the LLM.
-    static func continuationPrompt(context: String, styleNudge: String = "", maxWords: Int = 8, raw: Bool = false) -> String {
+    static func continuationPrompt(
+        context: String,
+        styleNudge: String = "",
+        maxWords: Int = 8,
+        raw: Bool = false,
+        systemPromptOverride: String? = nil
+    ) -> String {
         if raw {
-            // Raw mode: return context with only a style suffix if provided.
-            // No "Continue the next few words" — the model simply continues the text.
-            if !styleNudge.isEmpty {
-                return context + "\n\nStyle: \(styleNudge)"
+            // Raw completion endpoint with --no-jinja: send the context as-is,
+            // with a trailing space appended if the context doesn't end with one.
+            //
+            // The trailing space converts mid-word contexts ("best b") into clean
+            // word-boundary contexts ("best b "). This prevents the model from
+            // struggling with partial-word inputs at low temperature — instead
+            // of trying to complete "b" character-by-character, it predicts the
+            // most likely word following "b", which matches the user's intent.
+            //
+            // By contrast, the old chat template approach
+            // (<start_of_turn>system/user/model) forced the instruct model into
+            // chatbot mode, producing empty responses for mid-word inputs,
+            // safety refusals for full sentences, and system prompt leakage.
+            //
+            // Bare text with repeat_penalty at low temperature produces clean
+            // natural language continuations, not HTML/code.
+            if context.hasSuffix(" ") {
+                return context
             }
-            return context
+            return context + " "
         }
         var prompt = context
         if !styleNudge.isEmpty {

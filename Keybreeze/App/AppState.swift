@@ -59,6 +59,12 @@ final class AppState: ObservableObject {
 
     // MARK: Init
 
+    /// Guards against duplicate boot attempts during initialisation.
+    /// Set to `true` while `init()` is running so that `handleBackendChange`
+    /// and `handleModelChange` don't trigger unwanted side effects before the
+    /// single authoritative `refreshModels()` → `bootCurrentBackend()` path executes.
+    private var isInitializing = true
+
     init() {
         // Wire the BackendManager into AppKitLifecycle for clean termination
         AppKitLifecycle.backendManager = backendManager
@@ -73,6 +79,8 @@ final class AppState: ObservableObject {
         backendManager.$isReady
             .receive(on: DispatchQueue.main)
             .assign(to: &$isOllamaRunning)
+
+        isInitializing = false
     }
 
     deinit {
@@ -117,6 +125,7 @@ final class AppState: ObservableObject {
     // MARK: Backend Change
 
     private func handleBackendChange(to newBackend: LLMBackend) {
+        guard !isInitializing else { return }
         config.backend = newBackend
         // refreshModels() will scan models for the new backend,
         // then call bootCurrentBackend() which tears down old + boots new.
@@ -127,6 +136,9 @@ final class AppState: ObservableObject {
 
     private func handleModelChange(to newModel: ModelOption) {
         saveSelectedModel()
+
+        // During initialisation, bootCurrentBackend() will handle everything.
+        guard !isInitializing else { return }
 
         // If the backend isn't ready yet, just save the selection.
         // bootCurrentBackend() will use the correct model when it runs.
@@ -209,7 +221,12 @@ final class AppState: ObservableObject {
 
     private func selectCurrentModel(from options: [ModelOption]) {
         guard !options.isEmpty else { return }
-        if !options.contains(where: { $0.id == self.selectedModel.id }) {
+        // Always assign an instance from the scanned list so SwiftUI Picker
+        // tag matching works correctly — keeping the saved instance causes
+        // "is invalid and does not have an associated tag" warnings.
+        if let match = options.first(where: { $0.id == self.selectedModel.id }) {
+            selectedModel = match
+        } else {
             selectedModel = options[0]
         }
     }

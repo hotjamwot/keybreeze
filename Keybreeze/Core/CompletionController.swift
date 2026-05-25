@@ -27,9 +27,11 @@ final class CompletionController: ObservableObject {
     private var editorState: EditorState = .init(textBeforeCursor: "", textAfterCursor: "")
 
     /// The model to use for predictions — updated from AppState.
+    /// Defaults sourced from ModelOption (single source of truth).
     var modelID: String = "gemma2:2b"
-    var temperature: Double = 0.35
-    var topP: Double = 0.85
+    var temperature: Double = ModelOption.defaultTemperature
+    var topP: Double = ModelOption.defaultTopP
+    var repeatPenalty: Double = ModelOption.defaultRepeatPenalty
     var maxWords: Int = 5
     var customSystemPrompt: String = ""
     var styleNudge: String = ""
@@ -127,15 +129,16 @@ final class CompletionController: ObservableObject {
 
         let context = trimContext(state.textBeforeCursor, maxChars: 800)
         let isRaw = config.backend == .llamaCpp
+        let systemPrompt = PromptBuilder.systemPrompt(
+            customPrompt: customSystemPrompt,
+            styleNudge: styleNudge
+        )
         let prompt = PromptBuilder.continuationPrompt(
             context: context,
             styleNudge: styleNudge,
             maxWords: maxWords,
-            raw: isRaw
-        )
-        let systemPrompt = PromptBuilder.systemPrompt(
-            customPrompt: customSystemPrompt,
-            styleNudge: styleNudge
+            raw: isRaw,
+            systemPromptOverride: isRaw ? systemPrompt : nil
         )
 
         // Reset timing — capture start time locally for Sendable closure safety
@@ -154,6 +157,7 @@ final class CompletionController: ObservableObject {
             let model = self.modelID
             let temp = self.temperature
             let tp = self.topP
+            let rp = self.repeatPenalty
             let maxWords = self.maxWords
 
             // Local timing variables (not actor-isolated, hoisted for catch block access)
@@ -169,6 +173,7 @@ final class CompletionController: ObservableObject {
                     maxTokens: min(maxWords * 4, 64),
                     temperature: temp,
                     topP: tp,
+                    repeatPenalty: rp,
                     onToken: { token in
                         let now = Date()
                         // Track first token (local var is safe)
@@ -181,14 +186,31 @@ final class CompletionController: ObservableObject {
                         }
                         let wasEmpty = accumulatedTokens.isEmpty
                         accumulatedTokens += token
-                        // Streaming threshold gating (§10): only update the visible suggestion once
-                        // we've accumulated a complete word (contains a space) or at least 3 tokens.
-                        // This prevents "dancing" partial predictions like "I'" → "I'm" → "I'm doing".
-                        let hasFullWord = accumulatedTokens.contains(" ")
-                        let hasMinimumTokens = accumulatedTokens.split(separator: " ").count >= 3
-                        if wasEmpty || hasFullWord || hasMinimumTokens {
+                        // Streaming threshold gating (§10): only update the visible suggestion
+                        // once we've accumulated meaningful content. The gating strategy
+                        // depends on whether the user is mid-word or between words:
+                        //
+                        // - Mid-word (draft ends without a trailing space):
+                        //   Show tokens immediately — the model is completing the current
+                        //   word (e.g. "conversa" → "tion") so every token is relevant
+                        //   and there's no "dancing" to suppress.
+                        //
+                        // - Between words (draft ends with a trailing space):
+                        //   Wait until we have a full word (contains a space) or at least
+                        //   10 characters before showing. This prevents flickering
+                        //   partial-word tokens like "I'" → "I'm" → "I'm doing".
+                        let draftEndsMidWord = !capturedContext.hasSuffix(" ")
+                        if wasEmpty || draftEndsMidWord {
                             Task { @MainActor in
                                 self.suggestion = accumulatedTokens
+                            }
+                        } else {
+                            let hasFullWord = accumulatedTokens.contains(" ")
+                            let hasEnoughChars = accumulatedTokens.count >= 10
+                            if hasFullWord || hasEnoughChars {
+                                Task { @MainActor in
+                                    self.suggestion = accumulatedTokens
+                                }
                             }
                         }
                     }
@@ -252,12 +274,16 @@ final class CompletionController: ObservableObject {
         onRecordPrediction?(record)
 
         KeybreezeLatencyLogger.log(
+            backend: config.backend.displayName,
             modelDisplayName: modelID,
             ollamaModelId: modelID,
             verbosityBias: 0,
             timeToFirstToken: ttft,
             totalTime: totalTime,
-            wordCount: wordCount(in: continuation)
+            continuation: continuation,
+            wordCount: wordCount(in: continuation),
+            wasGated: true,
+            draftEndedMidWord: !text.hasSuffix(" ")
         )
     }
 

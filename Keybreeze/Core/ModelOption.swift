@@ -1,6 +1,10 @@
 import Foundation
 
 /// Model option - simplified version.
+///
+/// SINGLE SOURCE OF TRUTH for all inference parameter defaults.
+/// All other components (CompletionController, SessionViewModel, AggressionPreset)
+/// MUST reference these static defaults rather than hardcoding their own values.
 struct ModelOption: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let displayName: String
@@ -8,7 +12,7 @@ struct ModelOption: Codable, Equatable, Hashable, Identifiable, Sendable {
     let ggufPath: String?
     let maxWords: Int
 
-    // Runtime parameters
+    // Runtime parameters (per-model overrides; use static defaults as fallback)
     let temperature: Double
     let topP: Double
     let repeatPenalty: Double
@@ -16,9 +20,12 @@ struct ModelOption: Codable, Equatable, Hashable, Identifiable, Sendable {
 
     var isGGUF: Bool { ggufPath != nil }
 
-    static let defaultTemperature: Double = 0.35
+    // ── Single source of truth for inference defaults ──
+    // These are the production-tuned defaults for Gemma 4 E2B with llama.cpp.
+    // Change these to update all components that reference them.
+    static let defaultTemperature: Double = 0.1
     static let defaultTopP: Double = 0.85
-    static let defaultRepeatPenalty: Double = 1.02
+    static let defaultRepeatPenalty: Double = 1.15    // prevents word echoing (was 1.02)
     static let defaultConfidenceThreshold: Double = 0.25
 
     static let defaultModel = ModelOption(

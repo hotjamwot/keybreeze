@@ -114,9 +114,9 @@ final class SessionViewModel: ObservableObject {
     @Published var tuningMaxWords: Int = 0
     @Published var midTypeWords: Int = 0
     @Published var pauseWords: Int = 0
-    @Published var temperature: Double = 0.35
-    @Published var topP: Double = 0.85
-    @Published var repeatPenalty: Double = 1.02
+    @Published var temperature: Double = ModelOption.defaultTemperature
+    @Published var topP: Double = ModelOption.defaultTopP
+    @Published var repeatPenalty: Double = ModelOption.defaultRepeatPenalty
     @Published var confidenceThreshold: Double = 0.25
     @Published var verbosityBias: Double = 0.35
     @Published var continuationBias: Double = 0.45
@@ -612,6 +612,7 @@ final class SessionViewModel: ObservableObject {
             : effectiveModelOption.ollamaId
         controller.temperature = temperature
         controller.topP = topP
+        controller.repeatPenalty = repeatPenalty
         controller.maxWords = tuningMaxWords > 0 ? tuningMaxWords : effectiveModelOption.maxWords
         controller.customSystemPrompt = customSystemPrompt
         controller.styleNudge = styleNudge
@@ -669,9 +670,9 @@ final class SessionViewModel: ObservableObject {
         let settings = AppSettings.load()
         excludedBundleIDs = settings.appGating.excludedBundleIDs
         manualOnlyBundleIDs = settings.appGating.manualOnlyBundleIDs
-        temperature = settings.inference.temperature
+        temperature = settings.inference.temperature > 0 ? settings.inference.temperature : ModelOption.defaultTemperature
         topP = settings.inference.topP
-        repeatPenalty = settings.inference.repeatPenalty
+        repeatPenalty = settings.inference.repeatPenalty > 0 ? settings.inference.repeatPenalty : ModelOption.defaultRepeatPenalty
         confidenceThreshold = settings.inference.confidenceThreshold
         verbosityBias = settings.tuning.verbosityBias
         continuationBias = settings.tuning.continuationBias

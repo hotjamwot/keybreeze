@@ -30,6 +30,7 @@ final class LLMClient: @unchecked Sendable {
         maxTokens: Int,
         temperature: Double = 0.0,
         topP: Double = 0.1,
+        repeatPenalty: Double = 1.02,
         onToken: @escaping @Sendable (String) -> Void
     ) async throws {
         cancel()
@@ -60,13 +61,19 @@ final class LLMClient: @unchecked Sendable {
             request.httpBody = try JSONEncoder().encode(body)
 
         case .llamaCpp:
-            // Raw completion endpoint — no chat template, straight text in
+            // Raw completion endpoint — prompt is bare context text (no chat
+            // template tokens). Stop token "<" prevents HTML/formatted output.
+            // No "\n" stop token: newlines are common mid-word hesitation tokens
+            // and would kill the stream before any useful text is generated.
+            // The streaming gate in CompletionController handles display filtering.
             let body = LlamaCompletionRequest(
                 prompt: prompt,
                 nPredict: maxTokens,
                 temperature: temperature,
                 topP: topP,
-                stream: true
+                repeatPenalty: repeatPenalty,
+                stream: true,
+                stop: ["<"]
             )
             request.httpBody = try JSONEncoder().encode(body)
         }
@@ -241,17 +248,21 @@ private struct OpenAIChunk: Decodable {
 
 /// llama.cpp raw completion request — no chat template, just prompt text.
 /// Uses n_predict instead of max_tokens for token limit.
+/// Includes stop tokens and repeat_penalty for output quality control.
 private struct LlamaCompletionRequest: Encodable {
     let prompt: String
     let nPredict: Int
     let temperature: Double
     let topP: Double
+    let repeatPenalty: Double
     let stream: Bool
+    let stop: [String]
 
     enum CodingKeys: String, CodingKey {
-        case prompt, temperature, stream
+        case prompt, temperature, stream, stop
         case nPredict = "n_predict"
         case topP = "top_p"
+        case repeatPenalty = "repeat_penalty"
     }
 }
 
