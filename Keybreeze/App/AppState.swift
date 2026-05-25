@@ -65,9 +65,14 @@ final class AppState: ObservableObject {
 
         loadConfig()
         loadSelectedModel()
+        // refreshModels() is async and will call bootCurrentBackend() once models load.
+        // Do NOT call bootCurrentBackend() here — models aren't loaded yet.
         refreshModels()
-        // Boot the selected backend after the model catalog is loaded
-        bootCurrentBackend()
+
+        // Sync legacy isOllamaRunning to BackendManager state
+        backendManager.$isReady
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$isOllamaRunning)
     }
 
     deinit {
@@ -113,27 +118,22 @@ final class AppState: ObservableObject {
 
     private func handleBackendChange(to newBackend: LLMBackend) {
         config.backend = newBackend
+        // refreshModels() will scan models for the new backend,
+        // then call bootCurrentBackend() which tears down old + boots new.
         refreshModels()
-
-        let modelPath: String
-        switch newBackend {
-        case .ollama:
-            modelPath = selectedModel.ollamaId.isEmpty ? selectedModel.id : selectedModel.ollamaId
-        case .llamaCpp:
-            modelPath = selectedModel.ggufPath ?? ""
-        }
-
-        backendManager.switchBackend(
-            to: newBackend,
-            modelPath: modelPath,
-            ggufDirectory: config.llamaCppModelsDirectory
-        )
     }
 
     // MARK: Model Change
 
     private func handleModelChange(to newModel: ModelOption) {
         saveSelectedModel()
+
+        // If the backend isn't ready yet, just save the selection.
+        // bootCurrentBackend() will use the correct model when it runs.
+        guard backendManager.isReady else {
+            log.info("Model changed to \(newModel.displayName) — backend not ready, deferring to boot")
+            return
+        }
 
         switch selectedBackend {
         case .ollama:
@@ -183,6 +183,11 @@ final class AppState: ObservableObject {
                 await MainActor.run {
                     self.modelCatalogStatus = error.localizedDescription
                 }
+            }
+
+            // Boot backend now that models are loaded
+            await MainActor.run {
+                self.bootCurrentBackend()
             }
         }
     }

@@ -78,10 +78,11 @@ struct MenuBarContentView: View {
             // 5. Service status indicator
             HStack(spacing: 4) {
                 Circle()
-                    .fill(appState.isOllamaRunning ? Color.green : Color.red)
+                    .fill(appState.backendManager.isReady ? Color.green : Color.red)
                     .frame(width: 6, height: 6)
-                Text(appState.isOllamaRunning ? "Ollama Active" : "Ollama Inactive")
-                    .foregroundStyle(appState.isOllamaRunning ? .green : .red)
+                Text(appState.backendManager.statusMessage)
+                    .foregroundStyle(appState.backendManager.isReady ? .green : .red)
+                    .lineLimit(1)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -116,9 +117,6 @@ struct MenuBarContentView: View {
             .padding(.vertical, 6)
         }
         .frame(width: 280)
-        .task {
-            appState.refreshModels()
-        }
     }
 
     private func openSettings() {

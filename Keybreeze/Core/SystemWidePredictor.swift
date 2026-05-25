@@ -262,9 +262,11 @@ final class SystemWidePredictor {
         focusedAppBundleID = bundleID
         focusedAppName = appName(for: bundleID)
 
-        // 2. Gating checks
-        log.debug("Current focused app bundle ID: \(bundleID)")
-        
+        // 2. Gating checks (only log on app switch to reduce noise)
+        if bundleID != lastAppBundleID {
+            log.debug("Current focused app bundle ID: \(bundleID)")
+        }
+
         if bundleID == "app.keybreeze.Keybreeze" {
             // log.debug("Current app is Keybreeze — ignoring")
             return

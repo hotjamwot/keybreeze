@@ -24,8 +24,8 @@ Not an inference infrastructure project. The LLM layer is replaceable plumbing �
 | Phase 1 — LLM Pipeline (Ollama + llama.cpp) | ✅ Complete | Core inference client + dual endpoint support. |
 | Phase 2 — Prediction Engine | ✅ Complete | Debouncing and prompt orchestration. |
 | Phase 2.5 — Ghost Text + Tuning | ✅ Complete | UI integration and parameter control. |
-| Phase 3 — Backend Process Lifecycle | 🔄 In Progress | `BackendManager` builds successfully now. Full process lifecycle for Ollama and llama.cpp implemented, including auto-boot, model switching, and clean termination. Runtime backend connectivity issues remain (see Diagnostic Snapshot). |
-| Typing Lab / Feel Engineering | ⚠️ In Progress | Ghost text constants unified. PromptBuilder updated. Backspace correction partially implemented — detection and UI exist but matching has bugs. |
+| Phase 3 — Backend Process Lifecycle | 🔄 In Progress | `BackendManager` builds and boots correctly. Ollama is working end-to-end (predictions flow with ~25-180ms TTFT). llama.cpp blocked by `--no-chat-template` flag being unsupported in installed binary version. |
+| Typing Lab / Feel Engineering | ⚠️ In Progress | Ghost text constants unified. PromptBuilder updated. Backspace correction partially implemented — detection and UI exist but matching has bugs. «...» prefix still output by some models. |
 | Phase 4 — System-Wide Integration | ⏸ Paused | AX context reading + Tab accept mechanism exists but not yet reliable. |
 | Phase 5 — Ghost Overlay in External Apps | ⏸ Paused | Floating overlay for third-party apps exists but has positioning bugs. |
 | Phase 6+ — Polish, Style Memory, Expansion | Later | Refinements and feature expansion. |
@@ -94,7 +94,7 @@ ready(llamaCpp) → restarting → ready(llamaCpp)   (model change)
 - Spawns `llama-server` via `Process()` with tuned flags:
   ```
   --model <ggufPath> --host 127.0.0.1 --port 11345
-  --ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn
+  --ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn on
   --no-chat-template --temp 0.0 --top-p 0.1
   ```
 - Monitors stderr for startup confirmation (detects "starting server" / "model loaded" / "build info")
@@ -133,7 +133,7 @@ Gemma 4 E2B is one of the best models for text continuation, but when served thr
 - TTFT inflated (first "real" token arrives after thinking completes)
 - Accumulated tokens polluted with thinking prefixes (e.g., `...What is your name`)
 
-llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses this entirely — pure raw text in, raw text out.
+llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses this entirely — pure raw text in, raw text out. **However, `--no-chat-template` was only added to llama.cpp in late 2024 / early 2025 builds. Older installed versions don't have it.**
 
 ---
 
@@ -152,6 +152,7 @@ llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses 
 - When working on backspace correction, remember that the model often outputs `...` prefix and lowercase continuation suffixes — the correction detector must strip ellipsis, handle word-boundary changes across multiple backspaces, and reject uppercase (new sentence) matches.
 - **Use `BackendManager` for all process lifecycle** — never spawn `Process()` directly elsewhere.
 - **Use `AppKitLifecycle.willTerminateNotification` as the authoritative shutdown path** — never rely on `deinit`.
+- **When changing llama-server flags, verify the installed binary version supports them first** — some flags are version-specific.
 
 ### DO NOT:
 - Create new LLM provider files; use `LLMClient`.
@@ -179,20 +180,28 @@ llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses 
 - **Role:** Shared application state as `@MainActor` `ObservableObject`. Owns `BackendManager` and wires the full backend lifecycle.
 - **Key detail:** Owns the single `SessionViewModel` instance via `private var _sessionViewModel`. The computed `var sessionViewModel` lazily creates it once.
 - Also manages: `LLMConfig`, `selectedBackend`, `selectedModel`, `availableModels`, model catalog refresh, backend boot/switching.
-- **Backend events:**
-  - `init()` → calls `bootCurrentBackend()` after model catalog loads
-  - `selectedBackend.didSet` → `backendManager.switchBackend(to: newBackend, ...)`
-  - `selectedModel.didSet` → for llama.cpp: restarts server with new GGUF; for Ollama: no-op (API payload update only)
+- **Backend events (UPDATED 25 May 2026):**
+  - `init()` → calls `refreshModels()` (async, no longer calls `bootCurrentBackend()` synchronously)
+  - `refreshModels()` → after models load, calls `bootCurrentBackend()` at the end
+  - `handleBackendChange()` → calls `refreshModels()` only (delegates boot to the async completion)
+  - `handleModelChange()` → guards on `backendManager.isReady` before calling `switchModel()`; if not ready, just saves the selection for `bootCurrentBackend()` to use
 - **Wires** `AppKitLifecycle.backendManager = backendManager` for clean termination.
+- **Legacy sync:** `backendManager.$isReady` is bound to `$isOllamaRunning` via Combine for backward-compatible UI bindings.
 
-### `Keybreeze/Core/BackendManager.swift` (NEW — 24 May 2026)
+### `Keybreeze/Core/BackendManager.swift` (NEW — 24 May 2026, updated 25 May 2026)
 - **Role:** `@MainActor` class managing process lifecycle for both backends.
 - **Published:** `state: BackendState`, `isReady: Bool`, `statusMessage: String`, `lastError: String?`
 - **Ollama:** Health checks `localhost:11434`. If unreachable, spawns `ollama serve`. Only kills if we spawned it (`didWeSpawnOllama` flag).
-- **llama.cpp:** Spawns `llama-server` with tuned flags (`--ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn --no-chat-template --temp 0.0 --top-p 0.1`). Monitors stderr for readiness. On model change: terminate + respawn.
+- **llama.cpp:** Spawns `llama-server` with tuned flags:
+  ```
+  --model <ggufPath> --host 127.0.0.1 --port 11345
+  --ctx-size 512 --threads 4 --ubatch-size 256 --flash-attn on
+  --no-chat-template --temp 0.0 --top-p 0.1
+  ```
+  **⚠️ `--no-chat-template` is version-dependent — older llama.cpp builds don't support it.** Monitors stderr for readiness. On model change: terminate + respawn.
 - **Binary resolution:** Auto-detects via custom path → Homebrew cellar → `/opt/homebrew/bin` → `/usr/local/bin`.
 - **Termination:** Async graceful (`terminateAll`) and sync emergency (`terminateAllSync` with immediate SIGKILL + pkill safety net).
-- **Status: Builds successfully.** 4 compilation errors fixed on 24 May 2026. Runtime issues remain with backend health check state transitions.
+- **Status: Builds successfully.** Ollama connects and serves predictions. llama.cpp server crashes immediately due to unsupported `--no-chat-template` flag.
 
 ### `Keybreeze/Core/CompletionController.swift`
 - **Role:** Prediction orchestrator (`@MainActor`). The shared engine used by both Typing Lab and SystemWidePredictor.
@@ -212,6 +221,7 @@ llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses 
 - **Gating:** `shouldProcessApp()` checks `excludedBundleIDs`, `manualOnlyBundleIDs`, and IME composition state.
 - **Overlay:** Owns `SuggestionOverlayWindowController` — transparent borderless NSWindow positioned via AX cursor rect with 4-tier fallback chain.
 - **Status:** Implemented but not yet production-ready. Event tap requires Accessibility permissions. Cursor rect resolution is flaky in Terminal, web views, and Electron apps.
+- **Updated 25 May 2026:** Idle poll logging ("Current focused app bundle ID") now only fires on app switch — no more every-500ms spam.
 
 ### `Keybreeze/UI/SessionViewModel.swift`
 - **Role:** Bridge between UI and prediction engine. `@MainActor` `ObservableObject`.
@@ -277,44 +287,38 @@ llama.cpp with `--no-chat-template` and the raw `/completion` endpoint bypasses 
 
 ---
 
-## Current Diagnostic Snapshot (24 May 2026 — Evening)
+## Current Diagnostic Snapshot (25 May 2026 — Afternoon)
 
 ### Build Status
-**Builds successfully.** All 4 compilation errors in `BackendManager.swift` have been resolved.
+✅ **Builds successfully.** No compilation errors.
 
-### Runtime Status — Backend Not Connecting
+### Runtime Status
 
-| Issue | Detail |
-|-------|--------|
-| Ollama backend | Menu bar shows "Ollama is not running" even though Ollama is definitely running. Health check to `localhost:11434` succeeds but the app doesn't correctly transition to `ready(.ollama)` state. |
-| llama.cpp backend | Menu bar shows "backend not working". `llama-server` never spawns. Connecting to `127.0.0.1:11345` results in "Connection refused" (error -1004). The model path is resolved correctly (GGUF file exists at `/Users/haydenjweal/Movies/PROJECTS/AI/local_LLMs/llamacpp_models/gemma-4-E2B-i1-Q4_K_M.gguf`) but the server binary may not be found or spawned. |
-| Early boot | Log shows "No models available — skipping backend boot" on launch, suggesting model catalog loads after `bootCurrentBackend()` is called. |
-| Backend switching | "switchModel called but backend not ready" appears when switching models — the state machine guard is too strict. |
+| Backend | Status | Detail |
+|---------|--------|--------|
+| **Ollama** | ✅ WORKING | Predictions flow end-to-end. Menu bar shows "Ready (Ollama)". TTFT ~25-180ms with gemma2:2b model. Health check passes. Backend switch and model change work correctly. Ghost text overlay appears in Typing Lab playground. Overlay window displays in external apps (with fallback positioning). |
+| **llama.cpp** | ❌ BLOCKED | Server spawns (PID visible in logs) but immediately crashes with: `error: invalid argument: --no-chat-template`. The installed llama.cpp binary version does not support this flag. `--flash-attn` fix (changed to `--flash-attn on`) was correct — that error is gone — but `--no-chat-template` is the new blocker. |
 
-### Observed Log Pattern
+### Active Log Pattern (llama.cpp)
 
 ```
-No models available — skipping backend boot
-SessionViewModel initialized
-isEnabled changed to true
-Ollama already running — using existing service      ← health check passes
-Switching backend from Idle to Ollama               ← Ollama detected as running
-Ollama model changed to Qwen 2.5 Coder 3B
-switchModel called but backend not ready            ← state hasn't transitioned yet
+🔄 Backend changed to: llama.cpp
+llama.cpp model changed to Gemma 4 E2B I1 Q4_K_M — restarting server
+Spawned llama-server (PID: 35665)
+[Connection refused errors to 127.0.0.1:11345]
+llama-server stderr: error: invalid argument: --no-chat-template
 ```
 
-When switching to llama.cpp:
-```
-Switching backend from Ready (Ollama) to llama.cpp
-GGUF not found at                                    ← empty model path
-llama.cpp model changed — restarting server
-switchModel called but backend not ready
-```
+### What Changed Since 24 May
 
-### SystemWidePredictor Working
-- Event tap creation fails (expected — Accessibility permissions required)
-- Idle poll loop running — correctly detecting app switches (VSCode, Xcode, Keybreeze)
-- Correctly clearing suggestions on blocked apps
+| # | Issue | Root Cause | Fix | File(s) |
+|---|-------|-----------|-----|---------|
+| 21 | Ollama health check state transition never completed | `bootCurrentBackend()` called synchronously in `AppState.init()` before async `refreshModels()` completed — models were empty, boot was skipped, and the follow-up `switchModel` call also failed because state was still `.idle` | Moved `bootCurrentBackend()` to end of `refreshModels()` async Task. Added `isReady` guard to `handleModelChange`. Removed premature `switchBackend` call from `handleBackendChange`. | `AppState.swift` |
+| 22 | Menu bar always showed "Ollama Inactive" | `MenuBarContentView` read legacy `appState.isOllamaRunning` which was never updated | Changed to read `appState.backendManager.isReady` and `appState.backendManager.statusMessage`. Added Combine subscription: `backendManager.$isReady` → `$isOllamaRunning`. | `MenuBarContentView.swift`, `AppState.swift` |
+| 23 | "Boot called while in state Starting... — ignoring" (double boot) | `MenuBarContentView.task` called `refreshModels()` a second time when menu opened, racing with `init()`'s boot | Removed `.task { appState.refreshModels() }` from menu bar view. | `MenuBarContentView.swift` |
+| 24 | llama-server crashed: `error: unknown value for --flash-attn: '--no-chat-template'` | `--flash-attn` requires a value (`on`/`off`/`auto`). Passing it bare caused it to consume `--no-chat-template` as its value argument | Changed `"--flash-attn"` to `"--flash-attn", "on"` (two separate array elements) | `BackendManager.swift` |
+| 25 | "Current focused app bundle ID" logged every 500ms | `readAndPredict()` unconditionally logged the bundle ID on every idle poll | Gated behind `if bundleID != lastAppBundleID` — only logs on app switch | `SystemWidePredictor.swift` |
+| 26 | llama-server crashed: `error: invalid argument: --no-chat-template` | The installed llama.cpp binary version does not support the `--no-chat-template` flag (added in newer builds) | **NOT YET FIXED** — needs investigation of installed version and available flags | `BackendManager.swift` |
 
 ---
 
@@ -336,28 +340,30 @@ switchModel called but backend not ready
 - ✅ **Backspace correction detection** — basic pipeline exists: candidate capture, Combine subscriber on suggestion, Tab/ESC handling, correction state rendering in ghost text
 - ✅ **LLMClient dual endpoint support** — Ollama uses `/v1/chat/completions`, llama.cpp uses raw `/completion` with `n_predict`
 - ✅ **BackendManager process lifecycle** — full boot/switch/termination logic implemented
+- ✅ **Ollama backend fully working** — predictions flow, menu bar status correct, low latency
+- ✅ **SystemWidePredictor console noise reduced** — bundle ID only logged on app switch
+- ✅ **No double boot race** — menu bar no longer triggers a second `refreshModels()`
 
 ---
 
 ## What Still Needs Work
 
-### Critical — Runtime Backend Connectivity (24 May 2026 — Evening)
+### Critical — llama.cpp Backend Not Starting (25 May 2026)
 
-1. **Ollama health check state transition** — Health check to `localhost:11434` succeeds (HTTP 200), but the menu bar still shows "Ollama is not running". The `BackendManager` state machine doesn't correctly transition to `ready(.ollama)` after a successful health check in the `boot()` path.
+1. **`--no-chat-template` flag unsupported** — The installed llama.cpp binary version does not recognize `--no-chat-template`. This flag was added to llama.cpp server in later builds. The server process is spawned but immediately exits with exit code 1 (invalid argument). All subsequent requests to `127.0.0.1:11345` get "Connection refused" because no server is listening.
 
-2. **llama.cpp server not spawning** — `llama-server` never starts. The binary may not be found via auto-detection, or the spawn fails silently. Connecting to `127.0.0.1:11345` results in "Connection refused" because no server is listening.
-
-3. **Empty GGUF path on model switch** — Log shows `GGUF not found at` (empty path) when switching to llama.cpp backend. The model path isn't being passed through the backend switch flow correctly.
-
-4. **Early boot ordering** — "No models available — skipping backend boot" appears on launch because `bootCurrentBackend()` fires before the async model catalog refresh completes.
-
-5. **switchModel guard too strict** — `switchModel()` requires `.ready(let backend)` but the state may still be `.starting` or `.idle` when a model change is triggered from the UI.
+   **Required actions:**
+   - Determine the installed llama.cpp version: `llama-server --version` or `brew info llama.cpp`
+   - Check available flags: `llama-server --help 2>&1 | grep -i chat` — is there an equivalent flag? (e.g., `--chat-template none`, `--no-chat`, `--raw`)
+   - If no equivalent flag exists, either upgrade llama.cpp (`brew upgrade llama.cpp`) or remove the `--no-chat-template` flag and accept that Gemma 4 E2B may produce thinking tokens through the raw completion endpoint (which may be acceptable since we use the raw `/completion` endpoint, not chat completions — the chat template may not apply to raw mode).
 
 ### High Priority
 
-1. **Backend connectivity fixes** — Resolve the 5 runtime issues listed above. The app must correctly detect and connect to running backends (Ollama and llama.cpp) and show the correct status.
+2. **Ollama predictions sometimes start with `...`** — Despite the `PromptBuilder` rule "NEVER start with ellipsis", some Ollama models (gemma2:2b) output `...fiction for children`, `...that tells the story`. Options:
+   - Post-process suggestions in CompletionController to strip leading `...`
+   - Switch to llama.cpp for affected models once it's working
 
-2. **Backspace correction (§7) — buggy matching** — The detection logic is implemented but produces false positives. 
+3. **Backspace correction (§7) — buggy matching** — The detection logic is implemented but produces false positives. 
    - **Known issues:**
      - Candidate persists across multiple word-boundary backspaces
      - Lowercase suffix matching fires on every streaming token update
@@ -365,27 +371,35 @@ switchModel called but backend not ready
    - **Suggested approach:** Wait for suggestion to settle (wordCount > 0), then check once rather than on every streaming token.
    - **UI is ready:** `GhostTextModifier` renders strikethrough+green. Tab/ESC handling works.
 
-3. **Prompt tuning — model still outputs `...` prefix** — Despite the `PromptBuilder` rule "NEVER start with ellipsis", some models frequently output `...tely`, `...ation`, `...ly`. This degrades both normal predictions and correction detection. Options:
-   - Post-process suggestions in CompletionController to strip leading `...`
-   - Consider switching to llama.cpp + `--no-chat-template` for models like Gemma 4 E2B
-
-4. **SystemWidePredictor console noise** — The idle poll loop logs "Current focused app bundle ID" every 500ms unconditionally. Should be gated behind a debug flag or throttled.
-
 ### Medium Priority
 
-5. **SystemWidePredictor gating** — `shouldProcessApp()` may incorrectly return true for Keybreeze's own bundle ID in some code paths.
+4. **SystemWidePredictor gating** — `shouldProcessApp()` may incorrectly return true for Keybreeze's own bundle ID in some code paths.
 
-6. **System-wide integration** — AX context reading works but needs: reliable cursor rect positioning across apps, Tab insertion in external apps, event tap permission handling, app gating UI. Blocked on Lab feel engineering being locked down first.
+5. **System-wide integration** — AX context reading works but needs: reliable cursor rect positioning across apps, Tab insertion in external apps, event tap permission handling, app gating UI. Blocked on Lab feel engineering being locked down first.
 
 ### Lower Priority / Blocking
 
-7. **Ghost Overlay Positioning** — Fallback logic for AX cursor rects in multi-monitor setups needs robustifying (Tier 4 computed fallback is placeholder).
+6. **Ghost Overlay Positioning** — Fallback logic for AX cursor rects in multi-monitor setups needs robustifying (Tier 4 computed fallback is placeholder).
 
-8. **Right Arrow word-by-word acceptance** — Per BEHAVIOR.md §5. Powerful but low priority.
+7. **Right Arrow word-by-word acceptance** — Per BEHAVIOR.md §5. Powerful but low priority.
 
 ---
 
-## Summary of All Completed Fixes (24 May 2026)
+## Summary of All Completed Fixes
+
+### 25 May 2026 Session
+
+| # | Issue | Root Cause | Fix | File(s) |
+|---|-------|-----------|-----|---------|
+| 21 | Boot ordering: "No models available — skipping backend boot" | `bootCurrentBackend()` called synchronously before async model refresh | Moved to end of `refreshModels()` Task | `AppState.swift` |
+| 22 | Menu bar always showed "Ollama Inactive" | Read legacy `isOllamaRunning` never updated | Changed to `backendManager.isReady` + `statusMessage`; wired Combine sync | `MenuBarContentView.swift`, `AppState.swift` |
+| 23 | Double boot race ("Boot called while in state Starting...") | `MenuBarContentView.task` fired second `refreshModels()` | Removed the `.task` modifier | `MenuBarContentView.swift` |
+| 24 | llama-server: `unknown value for --flash-attn: '--no-chat-template'` | `--flash-attn` needs a value, consumed next flag | Changed to `"--flash-attn", "on"` | `BackendManager.swift` |
+| 25 | Console spam: "Current focused app bundle ID" every 500ms | Unconditional `log.debug` on every idle poll | Gated on `bundleID != lastAppBundleID` | `SystemWidePredictor.swift` |
+| 26 | `handleModelChange` called `switchModel` when backend not ready | No guard on backend state | Added `guard backendManager.isReady else { return }` | `AppState.swift` |
+| 27 | `handleBackendChange` called `switchBackend` with stale/empty model path | Called before `refreshModels()` completed | Removed direct `switchBackend` call; `refreshModels()` handles full boot | `AppState.swift` |
+
+### 24 May 2026 Session
 
 | # | Issue | Fix | File(s) |
 |---|-------|-----|---------|
@@ -414,16 +428,17 @@ switchModel called but backend not ready
 
 ## Next Steps (Recommended Order)
 
-1. **Fix backend connectivity** — Resolve the 5 runtime issues in §What Still Needs Work: Ollama health check state transition, llama-server spawning, empty GGUF path, early boot ordering, and switchModel guard. The app needs to actually connect to backends.
+1. **Fix llama.cpp `--no-chat-template`** — Determine installed llama.cpp version and available flags:
+   - Run: `llama-server --version`
+   - Run: `llama-server --help 2>&1 | grep -i chat`
+   - If no `--no-chat-template` equivalent exists: upgrade llama.cpp via Homebrew, or remove the flag (raw `/completion` endpoint may bypass chat templates regardless).
 
-2. **Test llama.cpp backend with Gemma 4 E2B** — Once the server spawns correctly, verify Gemma 4 E2B produces clean raw continuations without thinking tokens via `--no-chat-template`.
+2. **Test llama.cpp backend with Gemma 4 E2B** — Once the server starts correctly, verify Gemma 4 E2B produces clean raw continuations.
 
-3. **Fix backspace correction matching** — Gate correction detection on settled suggestions (not every streaming token). Tighten the match criteria.
+3. **Post-process predictions to strip `...`** — Strip leading ellipsis/dashes from Ollama suggestions in `CompletionController`.
 
-4. **Post-process predictions to strip `...`** — In `CompletionController` or via a Combine subscriber, strip leading ellipsis/dashes from suggestions.
+4. **Fix backspace correction matching** — Gate correction detection on settled suggestions (not every streaming token). Tighten the match criteria.
 
-5. **Reduce console noise** — Throttle SystemWidePredictor's idle poll logging to debug-only.
+5. **Polish SystemWidePredictor** — Fix gating for Keybreeze's own bundle ID, improve cursor rect positioning.
 
-6. **Polish SystemWidePredictor** — Reduce idle poll noise, fix gating for Keybreeze's own bundle ID, improve cursor rect positioning.
-
-7. **System-wide rollout** — Enable predictions across all apps.
+6. **System-wide rollout** — Enable predictions across all apps.

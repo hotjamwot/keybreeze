@@ -235,7 +235,7 @@ final class BackendManager {
                 "--ctx-size", "512",
                 "--threads", "4",
                 "--ubatch-size", "256",
-                "--flash-attn",
+                "--flash-attn", "on",
                 "--no-chat-template",
                 "--temp", "0.0",
                 "--top-p", "0.1",
