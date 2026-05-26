@@ -164,3 +164,33 @@ Each entry uses this structure:
   - **Mid-word** (draft ends without trailing space): Show tokens immediately — the model is completing the current word, every token is relevant.
   - **Between-words** (draft ends with trailing space): Wait until accumulated tokens contain a space (full word) or at least 10 characters before showing. Prevents flickering partial tokens.
 - **Consequences:** Mid-word completions appear instantly. Between-word gating prevents dancing.
+
+### D17 — Cotabby Architectural Synthesis ("Frankenstein" Convergence)
+- **Date:** 2026-05-26
+- **Status:** Active
+- **Context:** Keybreeze had several known weaknesses that Cotabby (a sibling project) had already solved: unreliable ghost overlay positioning (#1, #19), prediction invalidation on cursor moves (#5), backspace correction (#6), lack of instant local keystroke response (#8), Tab acceptance drops in heavy editors (#11), and ad-hoc app gating (#12). Instead of reinventing solutions, we decided to port Cotabby's battle-tested architectural components.
+- **Decision:** Port four well-defined Cotabby subsystems into Keybreeze's codebase, adapting them to Keybreeze's existing architecture:
+
+  1. **SuggestionSessionReconciler** (pure string reconciliation) — `SuggestionModels.swift`, `SuggestionSessionReconciler.swift`, `SuggestionSessionManager` (inline in `SessionViewModel.swift`)
+  2. **AXTextGeometryResolver + AXHelper + DisplayCoordinateConverter** (focus/geometry processing) — `AXHelper.swift`, `AXTextGeometryResolver.swift`, `DisplayCoordinateConverter.swift`
+  3. **SuggestionInserter + InputSuppressionController** (queue-based text insertion) — `SuggestionInserter.swift`, `InputSuppressionController.swift`
+  4. **SuggestionAvailabilityEvaluator + TerminalAppDetector** (dynamic gating) — `SuggestionAvailabilityEvaluator.swift`
+
+  Key integration decisions:
+  - **Not porting Cotabby's `FocusTracker` or `SuggestionCoordinator`** — Keybreeze's existing `SystemWidePredictor` and `SessionViewModel` serve equivalent roles. We ported the _pure logic_ layers and adapted them to the existing orchestration.
+  - **Not porting Cotabby's `InputMonitor`** — Keybreeze's existing CGEventTap + InputSourceMonitor pattern is simpler and works well. The ported `InputSuppressionController` is a lightweight add-on.
+  - **Not porting Cotabby's logging** — Keybreeze uses standard `Logger` throughout.
+  - **AXHelper.swift is a separate file** rather than extending `AccessibilityManager` — keeps the new AX utilities independent of the existing singleton.
+  - **SuggestionSessionManager lives inline in SessionViewModel.swift** rather than as a separate file — it's tightly coupled to the ViewModel's lifecycle and would add unnecessary indirection as a separate class.
+
+- **Alternatives considered:**
+  - Rewriting solutions from scratch (would take significantly longer, more bugs)
+  - Directly copying Cotabby's coordinator pattern wholesale (too invasive, would require rewriting `SystemWidePredictor` and `SessionViewModel`)
+  - Not porting at all and living with the existing bugs
+
+- **Consequences:**
+  - 8 new files added to the codebase (`.swift`)
+  - All ported code compiles but requires live testing to confirm functional correctness
+  - Status.md updated with honest ⚠️ entries for all ported-but-untested components
+  - Future work can be measured against Cotabby's test suite as a correctness reference
+  - The porting established that extending `AccessibilityManager` with ancestor AX text container walking is needed for Chromium/Electron apps (Obsidian, VS Code, Chrome)

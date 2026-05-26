@@ -46,15 +46,11 @@ final class AccessibilityManager {
             return nil
         }
 
-        // Strategy: AXValue + AXSelectedTextRange
+        // Strategy: Try getContextViaValue on the resolved focused element first.
         if let (before, after) = getContextViaValue(focused) {
-            // Filter out weak/invisible text (zero-width chars, etc.)
             let filtered = filterWeakText(before)
             guard !filtered.isEmpty else { return nil }
-
-            // Get cursor rect for overlay positioning
             let cursorRect = getCursorRect(focused) ?? .zero
-
             return TextContext(
                 prefix: String(filtered.suffix(maxChars)),
                 suffix: after,
@@ -62,6 +58,37 @@ final class AccessibilityManager {
             )
         }
 
+        // Fallback: Chromium/Electron apps (Obsidian, VS Code, Chrome) focus leaf AX nodes
+        // that don't expose AXValue directly. Walk up to find a text container ancestor.
+        if let textContainer = findTextContainer(from: focused),
+           let (before, after) = getContextViaValue(textContainer) {
+            let filtered = filterWeakText(before)
+            guard !filtered.isEmpty else { return nil }
+            let cursorRect = getCursorRect(textContainer) ?? .zero
+            self.log.debug("Found text context via ancestor container (role: \(AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: textContainer) ?? "?"))")
+            return TextContext(
+                prefix: String(filtered.suffix(maxChars)),
+                suffix: after,
+                cursorRect: cursorRect
+            )
+        }
+
+        // Fallback: Try AXValue on the raw (non-resolved) focused element.
+        // Some apps (e.g. Safari with specific text selections) expose AXValue
+        // on the raw AXTextMarker-focused element rather than the resolved one.
+        if let (before, after) = getContextViaValue(rawFocused) {
+            let filtered = filterWeakText(before)
+            guard !filtered.isEmpty else { return nil }
+            let cursorRect = getCursorRect(rawFocused) ?? .zero
+            self.log.debug("Found text context via raw (non-resolved) element")
+            return TextContext(
+                prefix: String(filtered.suffix(maxChars)),
+                suffix: after,
+                cursorRect: cursorRect
+            )
+        }
+
+        self.log.warning("All text context extraction strategies failed for element role=\(AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: focused) ?? "?")")
         return nil
     }
 
@@ -89,6 +116,34 @@ final class AccessibilityManager {
             current = nested
         }
         return current
+    }
+
+    /// Searches up the AX ancestor chain to find an element with a readable text value.
+    /// Chromium/Electron apps (Obsidian, VS Code, Chrome) often focus a leaf node that
+    /// doesn't expose AXValue directly — the text lives on a parent AXTextArea or AXTextField.
+    private func findTextContainer(from element: AXUIElement, maxAncestors: Int = 8) -> AXUIElement? {
+        // First check if the element itself has AXValue
+        if AXHelper.stringValue(for: kAXValueAttribute as CFString, on: element) != nil {
+            return element
+        }
+
+        var current = element
+        for _ in 0..<maxAncestors {
+            guard let parent = AXHelper.parentElement(of: current) else {
+                return nil
+            }
+            // Check if this parent has a text value
+            let role = AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: parent)
+            let isTextContainer = role == kAXTextAreaRole as String
+                || role == kAXTextFieldRole as String
+                || role == "AXComboBox"
+            if isTextContainer,
+               AXHelper.stringValue(for: kAXValueAttribute as CFString, on: parent) != nil {
+                return parent
+            }
+            current = parent
+        }
+        return nil
     }
 
     /// Check if the element is a secure text field (password fields).

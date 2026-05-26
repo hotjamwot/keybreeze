@@ -26,6 +26,9 @@ final class SystemWidePredictor {
     private let accessibility: AccessibilityManager
     private let inputMonitor: InputSourceMonitor
     private let overlay: SuggestionOverlayWindowController
+    private let suppressionController: InputSuppressionController
+    private let inserter: SuggestionInserter
+    private let geometryResolver: AXTextGeometryResolver
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: Configuration
@@ -106,6 +109,9 @@ final class SystemWidePredictor {
         self.accessibility = accessibility
         self.inputMonitor = inputMonitor
         self.overlay = SuggestionOverlayWindowController()
+        self.suppressionController = InputSuppressionController()
+        self.inserter = SuggestionInserter(suppressionController: suppressionController)
+        self.geometryResolver = AXTextGeometryResolver()
 
         // Observe suggestion changes from the controller and show/hide overlay.
         // Only show the overlay for external apps — Keybreeze's Typing Lab has its

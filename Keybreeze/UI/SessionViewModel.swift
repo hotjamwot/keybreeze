@@ -3,6 +3,132 @@ import Combine
 import Foundation
 import OSLog
 
+// MARK: - Suggestion Session State
+
+/// Manages an active suggestion session with reconciliation support.
+/// When the user types characters that match the visible ghost text, we
+/// advance the session locally — providing instant response without
+/// waiting for the server.
+@MainActor
+final class SuggestionSessionManager {
+    /// The current active session, if any.
+    private(set) var session: ActiveSuggestionSession?
+
+    /// Pending insertion sentinel for post-Tab AX lag tolerance.
+    private(set) var pendingInsertionConsumedCount: Int?
+
+    /// The last overlay state we published.
+    private(set) var overlayState: OverlayState = .hidden(reason: "No active suggestion")
+    
+    /// The visible text currently shown to the user (the remaining suggestion text).
+    private(set) var visibleSuggestion: String = ""
+    
+    /// Reset for a new session.
+    func reset() {
+        session = nil
+        pendingInsertionConsumedCount = nil
+        overlayState = .hidden(reason: "No active suggestion")
+        visibleSuggestion = ""
+    }
+    
+    /// Start a new suggestion session from a controller prediction.
+    func startSession(with suggestion: String, baseContext: FocusedInputContext, latency: TimeInterval) {
+        guard !suggestion.isEmpty else {
+            reset()
+            return
+        }
+        let newSession = ActiveSuggestionSession(
+            baseContext: baseContext,
+            fullText: suggestion,
+            latency: latency
+        )
+        session = newSession
+        visibleSuggestion = suggestion
+        overlayState = .visible(
+            text: suggestion,
+            geometry: SuggestionOverlayGeometry(
+                caretRect: baseContext.caretRect,
+                inputFrameRect: baseContext.inputFrameRect,
+                caretQuality: baseContext.caretQuality,
+                observedCharWidth: baseContext.observedCharWidth
+            )
+        )
+    }
+    
+    /// Attempt to advance the session locally when the user types characters
+    /// that match the beginning of the remaining ghost text.
+    /// Returns true if the suggestion was advanced (meaning we consumed the
+    /// typed characters locally without needing a server request).
+    func advanceWithTypedCharacters(_ typed: String) -> Bool {
+        guard let session else { return false }
+        guard let advanced = SuggestionSessionReconciler.advanceIfTypedCharactersMatch(typed, session: session) else {
+            return false
+        }
+        self.session = advanced
+        visibleSuggestion = advanced.remainingText
+        if advanced.isExhausted {
+            overlayState = .hidden(reason: "Suggestion fully consumed by typing")
+            visibleSuggestion = ""
+        } else {
+            overlayState = .visible(
+                text: advanced.remainingText,
+                geometry: SuggestionOverlayGeometry(
+                    caretRect: advanced.baseContext.caretRect,
+                    inputFrameRect: advanced.baseContext.inputFrameRect,
+                    caretQuality: advanced.baseContext.caretQuality,
+                    observedCharWidth: advanced.baseContext.observedCharWidth
+                )
+            )
+        }
+        return true
+    }
+    
+    /// Reconcile the session with live editor state from AX.
+    func reconcile(with liveContext: FocusedInputContext) -> SuggestionSessionReconciliation {
+        guard let session else {
+            return .invalid("No active session to reconcile")
+        }
+        let result = SuggestionSessionReconciler.reconcile(
+            session: session,
+            with: liveContext,
+            pendingInsertionConsumedCount: pendingInsertionConsumedCount
+        )
+        if case let .valid(updatedSession, _, newPending) = result {
+            self.session = updatedSession
+            pendingInsertionConsumedCount = newPending
+            visibleSuggestion = updatedSession.remainingText
+            if updatedSession.isExhausted {
+                overlayState = .hidden(reason: "Suggestion exhausted")
+                visibleSuggestion = ""
+            } else {
+                overlayState = .visible(
+                    text: updatedSession.remainingText,
+                    geometry: SuggestionOverlayGeometry(
+                        caretRect: updatedSession.baseContext.caretRect,
+                        inputFrameRect: updatedSession.baseContext.inputFrameRect,
+                        caretQuality: updatedSession.baseContext.caretQuality,
+                        observedCharWidth: updatedSession.baseContext.observedCharWidth
+                    )
+                )
+            }
+        } else if case .invalid = result {
+            reset()
+        }
+        return result
+    }
+}
+
+// MARK: - String Utilities
+
+private extension String {
+    /// The characters that Keybreeze treats as typed text mutations eligible for local reconciliation.
+    /// Control characters (backspace, return, etc.) require server regeneration.
+    var isTypedTextInput: Bool {
+        guard !isEmpty else { return false }
+        return unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+    }
+}
+
 /// Prediction session view model — the bridge between the user interface and the prediction engine.
 /// Acts as both the editor state holder and the observable surface for TypingLab views.
 ///
