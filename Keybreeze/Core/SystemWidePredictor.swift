@@ -26,10 +26,15 @@ final class SystemWidePredictor {
     private let accessibility: AccessibilityManager
     private let inputMonitor: InputSourceMonitor
     private let overlay: SuggestionOverlayWindowController
-    private let suppressionController: InputSuppressionController
+    let suppressionController: InputSuppressionController
     private let inserter: SuggestionInserter
     private let geometryResolver: AXTextGeometryResolver
     private var cancellables = Set<AnyCancellable>()
+
+    /// Manages active suggestion sessions for local reconciler advancement.
+    /// When the user types characters matching the ghost text, the session advances
+    /// locally without a server round-trip.
+    private let sessionManager = SuggestionSessionManager()
 
     // MARK: Configuration
 
@@ -54,6 +59,10 @@ final class SystemWidePredictor {
     /// to skip redundant predictions when nothing changed.
     private var lastTextBeforeCursor: String = ""
     private var lastTextAfterCursor: String = ""
+
+    /// The text before cursor from the PREVIOUS readAndPredict() call.
+    /// Used to compute the typed delta for local reconciler advancement.
+    private var lastPreviousPrefix: String = ""
 
     /// The last known cursor rect (AX coordinate space) — used to position the overlay
     /// when a new suggestion arrives from the controller.
@@ -127,9 +136,33 @@ final class SystemWidePredictor {
                 }
                 if suggestion.isEmpty {
                     self.log.debug("Overlay: suggestion cleared → hiding")
+                    self.sessionManager.reset()
                     self.overlay.hide()
                 } else {
                     self.log.debug("Overlay: suggestion received '\(suggestion)' → showing at cursorRect=(\(self.lastCursorRect.origin.x), \(self.lastCursorRect.origin.y), \(self.lastCursorRect.size.width)x\(self.lastCursorRect.size.height))")
+                    // Start a local session so the reconciler can advance
+                    // when the user types matching characters.
+                    self.sessionManager.startSession(
+                        with: suggestion,
+                        baseContext: FocusedInputContext(
+                            applicationName: self.focusedAppName ?? "",
+                            bundleIdentifier: self.focusedAppBundleID ?? "",
+                            processIdentifier: 0,
+                            elementIdentifier: "",
+                            role: "AXTextArea",
+                            subrole: nil,
+                            caretRect: self.lastCursorRect,
+                            inputFrameRect: nil,
+                            caretQuality: .estimated,
+                            observedCharWidth: nil,
+                            precedingText: self.lastTextBeforeCursor,
+                            trailingText: self.lastTextAfterCursor,
+                            selection: NSRange(location: self.lastTextBeforeCursor.count, length: 0),
+                            isSecure: false,
+                            generation: 0
+                        ),
+                        latency: 0
+                    )
                     self.overlay.show(text: suggestion, at: self.lastCursorRect)
                 }
             }
@@ -206,6 +239,10 @@ final class SystemWidePredictor {
             }
 
             let predictor = Unmanaged<SystemWidePredictor>.fromOpaque(refcon).takeUnretainedValue()
+            // If this event is a synthetic keystroke from our inserter, suppress it.
+            if predictor.suppressionController.consumeIfNeeded() {
+                return nil  // Consume the event — don't let it through to the app.
+            }
             predictor.handleKeyDown()
             return Unmanaged.passUnretained(event)
         }
@@ -310,7 +347,9 @@ final class SystemWidePredictor {
             lastAppBundleID = bundleID
             lastTextBeforeCursor = ""
             lastTextAfterCursor = ""
+            lastPreviousPrefix = ""
             hasActiveContext = false
+            sessionManager.reset()
         }
 
         // 5. Read text context via AX
@@ -349,6 +388,7 @@ final class SystemWidePredictor {
             if cursorRectChanged && hasActiveContext && !controller.suggestion.isEmpty {
                 log.debug("Cursor moved without text change — invalidating suggestion")
                 lastValidCursorRect = .zero
+                sessionManager.reset()
                 DispatchQueue.main.async { [weak self] in
                     self?.controller.suggestion = ""
                 }
@@ -361,7 +401,31 @@ final class SystemWidePredictor {
         lastTextAfterCursor = context.suffix
         hasActiveContext = true
 
-        // 8. Feed into prediction engine
+        // 8. Try local reconciler advancement before hitting the server.
+        // If the user typed characters that match the beginning of the
+        // visible ghost text, advance the session locally — providing
+        // instant response without a server round-trip.
+        let typedDelta = String(context.prefix.dropFirst(lastPreviousPrefix.count))
+        lastPreviousPrefix = context.prefix
+        if !typedDelta.isEmpty, sessionManager.advanceWithTypedCharacters(typedDelta) {
+            log.debug("Reconciler: advanced session locally for typed delta '\(typedDelta)'")
+            if sessionManager.session?.isExhausted == true {
+                DispatchQueue.main.async { [weak self] in
+                    self?.controller.suggestion = ""
+                    self?.overlay.hide()
+                }
+            } else {
+                let remaining = sessionManager.visibleSuggestion
+                let rect = self.lastCursorRect
+                DispatchQueue.main.async { [weak self] in
+                    self?.controller.suggestion = remaining
+                    self?.overlay.show(text: remaining, at: rect)
+                }
+            }
+            return
+        }
+
+        // 9. Feed into prediction engine (server round-trip)
         log.debug("Feeding EditorState to controller (prefix length=\(context.prefix.count))")
         controller.editorStateChanged(EditorState(
             textBeforeCursor: context.prefix,
@@ -369,9 +433,37 @@ final class SystemWidePredictor {
         ))
     }
 
-    /// Resolves the best cursor rect to use for overlay positioning, using
-    /// a 4-tier fallback chain when AX cursor rect extraction fails.
+    /// Resolves the best cursor rect to use for overlay positioning.
+    /// Tries the ported 6-branch geometry resolver first, then falls back
+    /// to the existing 4-tier chain.
     private func resolveCursorRect(from context: TextContext) {
+        // Try the ported 6-branch resolver via AX element inspection.
+        if let focusedElement = resolveFocusedAXElement() {
+            let paramNames = AXHelper.parameterizedAttributeNames(on: focusedElement)
+            let supportsBoundsForRange = paramNames.contains(kAXBoundsForRangeParameterizedAttribute as String)
+            let attrNames = AXHelper.attributeNames(on: focusedElement)
+            let supportsFrame = attrNames.contains("AXFrame")
+            let anchorFrame = AXHelper.rectValue(for: "AXFrame" as CFString, on: focusedElement)
+            let textValue = AXHelper.stringValue(for: kAXValueAttribute as CFString, on: focusedElement)
+            let selection = NSRange(location: context.prefix.count, length: 0)
+
+            if let result = geometryResolver.resolveCaretRect(
+                for: focusedElement,
+                selection: selection,
+                supportsBoundsForRange: supportsBoundsForRange,
+                supportsFrame: supportsFrame,
+                cocoaAnchorFrame: anchorFrame,
+                textValue: textValue
+            ) {
+                let rect = result.rect
+                log.debug("Cursor rect: Resolver branch \(result.quality.label) — (\(rect.origin.x), \(rect.origin.y), \(rect.size.width)x\(rect.size.height))")
+                lastCursorRect = rect
+                lastValidCursorRect = rect
+                return
+            }
+        }
+
+        // Fallback to the existing 4-tier chain.
         let axCursorRect = context.cursorRect
 
         if axCursorRect.width >= 0, axCursorRect.height > 0 {
@@ -395,6 +487,35 @@ final class SystemWidePredictor {
             log.debug("Cursor rect: Tier 4 (computed from window) — (\(computed.origin.x), \(computed.origin.y), \(computed.size.width)x\(computed.size.height))")
             lastCursorRect = computed
         }
+    }
+
+    /// Resolves the focused AX element from the frontmost application.
+    /// Returns the resolved (nested) element suitable for geometry resolution.
+    private func resolveFocusedAXElement() -> AXUIElement? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let pid = app.processIdentifier
+        let pidRef = AXUIElementCreateApplication(pid)
+
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(pidRef, kAXFocusedUIElementAttribute as CFString, &value)
+        guard result == .success, let rawElement = value else { return nil }
+        let raw = rawElement as! AXUIElement
+
+        // Resolve nested focused elements (AutoComp pattern).
+        var current = raw
+        for _ in 0..<6 {
+            var nestedRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(current, kAXFocusedUIElementAttribute as CFString, &nestedRef) == .success,
+                  let nestedRef else {
+                return current
+            }
+            let nested = nestedRef as! AXUIElement
+            if Unmanaged.passUnretained(current).toOpaque() == Unmanaged.passUnretained(nested).toOpaque() {
+                return current
+            }
+            current = nested
+        }
+        return current
     }
 
     /// Computes a reasonable fallback cursor rect when AX cursor resolution fails.
@@ -494,11 +615,18 @@ final class SystemWidePredictor {
             return false
         }
 
-        if excludedBundleIDs.contains(bundleID) {
-            setPaused(reason: "Excluded app")
+        if let reason = SuggestionAvailabilityEvaluator.disabledReason(
+            globallyEnabled: true,
+            disabledAppBundleIdentifiers: Set(excludedBundleIDs),
+            inputMonitoringGranted: true,  // TODO: wire real permission state
+            bundleIdentifier: bundleID,
+            applicationName: appName(for: bundleID) ?? bundleID
+        ) {
+            setPaused(reason: reason)
             return false
         }
 
+        // Keep manual-only check as a Keybreeze-specific override
         if manualOnlyBundleIDs.contains(bundleID) && !predictInManualOnly {
             setPaused(reason: "Manual-only app")
             return false
@@ -515,6 +643,7 @@ final class SystemWidePredictor {
         lastAppBundleID = nil
         if hasActiveContext {
             log.debug("No focus — clearing suggestion and hiding overlay")
+            sessionManager.reset()
             DispatchQueue.main.async { [weak self] in
                 self?.controller.suggestion = ""
                 self?.overlay.hide()
@@ -523,6 +652,7 @@ final class SystemWidePredictor {
         }
         lastTextBeforeCursor = ""
         lastTextAfterCursor = ""
+        lastPreviousPrefix = ""
         lastCursorRect = .zero
         lastValidCursorRect = .zero
         setPaused(reason: "No app focused")

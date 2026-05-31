@@ -74,8 +74,7 @@ enum TerminalAppDetector {
         "com.jetbrains.PhpStorm",
         "com.jetbrains.PyCharm",
         "com.jetbrains.RubyMine",
-        "com.jetbrains.WebStorm",
-        "com.tinyspeck.slackmacgap"
+        "com.jetbrains.WebStorm"
     ]
 
     static func isTerminal(bundleIdentifier: String?) -> Bool {
