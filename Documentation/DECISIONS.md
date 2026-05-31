@@ -167,7 +167,7 @@ Each entry uses this structure:
 
 ### D17 — Cotabby Architectural Synthesis ("Frankenstein" Convergence)
 - **Date:** 2026-05-26
-- **Status:** Active
+- **Status:** Active (components ported, not yet wired — see D18 for competitive focus)
 - **Context:** Keybreeze had several known weaknesses that Cotabby (a sibling project) had already solved: unreliable ghost overlay positioning (#1, #19), prediction invalidation on cursor moves (#5), backspace correction (#6), lack of instant local keystroke response (#8), Tab acceptance drops in heavy editors (#11), and ad-hoc app gating (#12). Instead of reinventing solutions, we decided to port Cotabby's battle-tested architectural components.
 - **Decision:** Port four well-defined Cotabby subsystems into Keybreeze's codebase, adapting them to Keybreeze's existing architecture:
 
@@ -194,3 +194,22 @@ Each entry uses this structure:
   - Status.md updated with honest ⚠️ entries for all ported-but-untested components
   - Future work can be measured against Cotabby's test suite as a correctness reference
   - The porting established that extending `AccessibilityManager` with ancestor AX text container walking is needed for Chromium/Electron apps (Obsidian, VS Code, Chrome)
+
+### D18 — Competitive Focus: KeyType as Primary Reference
+- **Date:** 2026-05-31
+- **Status:** Active
+- **Context:** After a comprehensive analysis of Keybreeze vs. Cotabby vs. KeyType, we determined that Cotabby is less mature than KeyType and lacks its constrained generation, per-app compatibility, and KV cache optimization. KeyType (MIT-licensed, production-shipped, 50+ ADRs) is the stronger reference implementation. Keybreeze's unique advantages are its thin-client process architecture (lightweight, no C++ compilation), dual-backend flexibility (Ollama + llama.cpp), PredictionMode (midType vs pause), and streaming with mid-word gate. Cotabby has been dropped from competitive tracking.
+- **Decision:** Focus competitive analysis and improvement planning exclusively on KeyType as the reference implementation. Cotabby's ported components (D17) remain useful but Cotabby is no longer tracked as a competitor. KeyType's ideas to adopt (prioritized):
+  1. **Tier 1 — Wire ported components** (reconciler, inserter suppression, evaluator, geometry resolver) — already in codebase from D17, highest ROI
+  2. **Tier 2 — Adopt KeyType ideas** (per-app overrides, post-generation filtering, basic prompt sectioning, prediction log)
+  3. **Tier 3 — Longer-term** (Apple Intelligence, OCR, personalization)
+  4. **Don't adopt** — in-process llama.cpp xcframework, multi-branch constrained generation, 10-package architecture, ACPF token profiles
+- **Alternatives considered:**
+  - Matching KeyType feature-for-feature (rejected — would require rewriting Keybreeze's core architecture)
+  - Forking KeyType (rejected — different design philosophy, user wants to build and learn)
+  - Continuing to track Cotabby (rejected — less mature, less relevant)
+- **Consequences:**
+  - COMPETITIVE_COMPARISON.md updated to Keybreeze vs KeyType only
+  - Future improvement decisions reference KeyType as the source of ideas
+  - Keybreeze's strategic position: lightest, most responsive system-wide autocomplete that works with the user's existing LLM infrastructure
+  - Keybreeze's unique niche: thin-client architecture that can leverage larger models (7B+) via Ollama that KeyType's in-process approach cannot run
