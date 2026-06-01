@@ -163,7 +163,7 @@ final class SystemWidePredictor {
                         ),
                         latency: 0
                     )
-                    self.overlay.show(text: suggestion, at: self.lastCursorRect)
+                    self.overlay.show(text: suggestion, at: self.lastCursorRect, bundleID: self.focusedAppBundleID)
                 }
             }
             .store(in: &cancellables)
@@ -415,18 +415,22 @@ final class SystemWidePredictor {
                     self?.overlay.hide()
                 }
             } else {
-                let remaining = sessionManager.visibleSuggestion
-                let rect = self.lastCursorRect
-                DispatchQueue.main.async { [weak self] in
-                    self?.controller.suggestion = remaining
-                    self?.overlay.show(text: remaining, at: rect)
-                }
+                    let remaining = sessionManager.visibleSuggestion
+                    let rect = self.lastCursorRect
+                    let bundleID = self.focusedAppBundleID
+                    DispatchQueue.main.async { [weak self] in
+                        self?.controller.suggestion = remaining
+                        self?.overlay.show(text: remaining, at: rect, bundleID: bundleID)
+                    }
             }
             return
         }
 
         // 9. Feed into prediction engine (server round-trip)
         log.debug("Feeding EditorState to controller (prefix length=\(context.prefix.count))")
+        // Pass app context so the controller can use per-app prompt gating
+        controller.currentAppName = focusedAppName ?? ""
+        controller.currentAppBundleID = bundleID
         controller.editorStateChanged(EditorState(
             textBeforeCursor: context.prefix,
             textAfterCursor: context.suffix

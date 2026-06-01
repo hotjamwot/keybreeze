@@ -1,5 +1,17 @@
 import Foundation
 
+/// How the ghost text overlay is positioned relative to the caret.
+/// Matches KeyType's `OverlayPreference` — used for per-app tuning.
+enum OverlayPreference {
+    /// Standard inline ghost text on the same baseline as the caret.
+    case inline
+    /// Text mirror: overlay appears below the caret (for mid-line completions
+    /// where inline would overlap existing text).
+    case textMirror
+    /// No overlay shown (e.g., password managers).
+    case hidden
+}
+
 /// Per-app compatibility configuration.
 ///
 /// Data-driven override table that replaces hardcoded bundle ID lists.
@@ -27,9 +39,20 @@ struct TargetOverride {
     /// Some apps (e.g., Google Docs, WeChat) don't handle synthetic keystrokes.
     let usePasteboardInsertion: Bool
 
-    /// Custom prompt suffix to append for this app.
-    /// Use to bias the model toward the app's domain (e.g., "Write in formal email style" for Gmail).
+    /// Custom prompt instructions for this app (fed into the prompt as a section).
     let customPromptSuffix: String
+
+    /// Per-app overlay preference (inline, textMirror, or hidden).
+    let overlayPreference: OverlayPreference
+
+    /// Font size adjustment factor for the overlay (1.0 = no adjustment).
+    /// Some apps report slightly different font metrics; this corrects for that.
+    let fontSizeAdjustmentFactor: Double
+
+    /// Vertical offset (in points) applied to the overlay position.
+    /// Positive values shift the overlay downward. Useful for apps where
+    /// the caret rect is slightly misaligned.
+    let verticalAlignmentOffset: Double
 
     /// Static factory for a default entry with sensible defaults.
     static func entry(
@@ -37,14 +60,20 @@ struct TargetOverride {
         predictionEnabled: Bool = true,
         environmentContextDisabled: Bool = false,
         usePasteboardInsertion: Bool = false,
-        customPromptSuffix: String = ""
+        customPromptSuffix: String = "",
+        overlayPreference: OverlayPreference = .inline,
+        fontSizeAdjustmentFactor: Double = 1.0,
+        verticalAlignmentOffset: Double = 0
     ) -> TargetOverride {
         TargetOverride(
             bundleIdentifier: bundleIdentifier,
             predictionEnabled: predictionEnabled,
             environmentContextDisabled: environmentContextDisabled,
             usePasteboardInsertion: usePasteboardInsertion,
-            customPromptSuffix: customPromptSuffix
+            customPromptSuffix: customPromptSuffix,
+            overlayPreference: overlayPreference,
+            fontSizeAdjustmentFactor: fontSizeAdjustmentFactor,
+            verticalAlignmentOffset: verticalAlignmentOffset
         )
     }
 }
@@ -182,6 +211,24 @@ enum AppCompatibility {
     static func customPromptSuffix(for bundleIdentifier: String?) -> String {
         guard let bundleIdentifier else { return "" }
         return override(for: bundleIdentifier)?.customPromptSuffix ?? ""
+    }
+
+    /// Get the overlay preference for this app.
+    static func overlayPreference(for bundleIdentifier: String?) -> OverlayPreference {
+        guard let bundleIdentifier else { return .inline }
+        return override(for: bundleIdentifier)?.overlayPreference ?? .inline
+    }
+
+    /// Get the font size adjustment factor for this app (1.0 = no adjustment).
+    static func fontSizeAdjustmentFactor(for bundleIdentifier: String?) -> Double {
+        guard let bundleIdentifier else { return 1.0 }
+        return override(for: bundleIdentifier)?.fontSizeAdjustmentFactor ?? 1.0
+    }
+
+    /// Get the vertical alignment offset for this app (in points).
+    static func verticalAlignmentOffset(for bundleIdentifier: String?) -> Double {
+        guard let bundleIdentifier else { return 0 }
+        return override(for: bundleIdentifier)?.verticalAlignmentOffset ?? 0
     }
 
     /// Get all bundle identifiers that are suppressed.

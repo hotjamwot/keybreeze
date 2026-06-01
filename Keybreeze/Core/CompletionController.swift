@@ -36,6 +36,11 @@ final class CompletionController: ObservableObject {
     var customSystemPrompt: String = ""
     var styleNudge: String = ""
 
+    /// Current app context — set by SystemWidePredictor before triggering predictions.
+    /// Used for per-app prompt gating and custom instructions.
+    var currentAppName: String = ""
+    var currentAppBundleID: String = ""
+
     /// Callback for recording prediction results in history
     var onRecordPrediction: ((PredictionRecord) -> Void)?
 
@@ -133,13 +138,20 @@ final class CompletionController: ObservableObject {
             customPrompt: customSystemPrompt,
             styleNudge: styleNudge
         )
+
+        // Resolve per-app custom instructions from AppCompatibility
+        let appCustomInstructions = AppCompatibility.customPromptSuffix(for: currentAppBundleID)
+
         let prompt = PromptBuilder.continuationPrompt(
             context: context,
             textAfterCursor: state.textAfterCursor,
             styleNudge: styleNudge,
             maxWords: maxWords,
             raw: isRaw,
-            systemPromptOverride: isRaw ? systemPrompt : nil
+            systemPromptOverride: isRaw ? systemPrompt : nil,
+            appName: currentAppName,
+            bundleIdentifier: currentAppBundleID,
+            customInstructions: appCustomInstructions
         )
 
         // Reset timing — capture start time locally for Sendable closure safety

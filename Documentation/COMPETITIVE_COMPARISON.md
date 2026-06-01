@@ -93,13 +93,13 @@ KeyType's AX-notification-driven approach is the most efficient (avoids polling 
 
 | Dimension | Keybreeze | KeyType |
 |:---|:---|:---|
-| **Prompt structure** | Sectioned: context + after-cursor context + instruction suffix (✅ after-cursor added) | **Sectioned/budgeted** — 9 named sections with priority/min/max token budgets |
-| **Tokenizer-backed budgeting** | ❌ (character-based word cap) | ✅ Real tokenizer counts via `ModelRuntime` |
+| **Prompt structure** | **Sectioned/budgeted** ✅ (D19) — 6 named sections with priority/min/max token budgets, `beforeCursor` always last | **Sectioned/budgeted** — 9 named sections with priority/min/max token budgets |
+| **Tokenizer-backed budgeting** | ~4 chars/token approximation ✅ (D19) | ✅ Real tokenizer counts via `ModelRuntime` |
 | **Base vs. chat** | Branches per backend (raw for llama.cpp, chat for Ollama) | Base continuation (default) + ChatML fallback |
-| **Caret-boundary sanitization** | ❌ | ✅ Trims trailing whitespace, reconciles leading separator |
-| **Per-app prompt gating** | ❌ | ✅ `environmentContextDisabled` for code editors/terminals |
+| **Caret-boundary sanitization** | ✅ Trims trailing whitespace (D19) | ✅ Trims trailing whitespace, reconciles leading separator |
+| **Per-app prompt gating** | ✅ `environmentContextDisabled` wired (D19) | ✅ `environmentContextDisabled` for code editors/terminals |
 | **Personalization** | ❌ | ✅ Local writing history samples in prompt |
-| **Custom instructions** | ❌ | ✅ Global + per-app/per-domain |
+| **Custom instructions** | ✅ Per-app via `AppCompatibility.customPromptSuffix()` (D19) | ✅ Global + per-app/per-domain |
 
 ### Key Insight
 KeyType's prompting is dramatically more sophisticated. The sectioned budgeted approach ensures the model gets the right context within its token budget, and per-app gating prevents code-editor metadata from biasing prose predictions. Keybreeze's simple prompting works but misses significant quality gains from context engineering.
@@ -137,11 +137,11 @@ KeyType's pasteboard-based approach with save/restore is more reliable across ap
 
 | Dimension | Keybreeze | KeyType |
 |:---|:---|:---|
-| **Approach** | Basic bundle ID list + terminal detection | **Data-driven `TargetOverride` table** with 15+ fields per target |
-| **Per-app rules** | Disabled apps list | Comprehensive seed table (terminals, password managers, code editors, web surfaces) |
-| **Overlay tuning** | Fixed (`.popUpMenu` level) | Per-app: `.inline` / `.textMirror` / `.hidden` + font size adjustment |
-| **Insertion tuning** | ❌ | Per-app: chunk size, NBSP, paste-and-match, backspace-after-paste |
-| **Prompt tuning** | ❌ | Per-app custom instructions + environment context gating |
+| **Approach** | **Data-driven `TargetOverride` table** ✅ (D19) with 7 fields per target | **Data-driven `TargetOverride` table** with 15+ fields per target |
+| **Per-app rules** | 40+ apps across 6 categories (terminals, code editors, password managers, system utilities, web surfaces, messaging) | Comprehensive seed table (terminals, password managers, code editors, web surfaces) |
+| **Overlay tuning** | ✅ Per-app: `overlayPreference` (inline/textMirror/hidden) + `fontSizeAdjustmentFactor` + `verticalAlignmentOffset` (D19) | Per-app: `.inline` / `.textMirror` / `.hidden` + font size adjustment |
+| **Insertion tuning** | 🔄 `usePasteboardInsertion` flag data-ready (not yet wired into inserter) | Per-app: chunk size, NBSP, paste-and-match, backspace-after-paste |
+| **Prompt tuning** | ✅ Per-app custom instructions via `customPromptSuffix` + environment context gating (D19) | Per-app custom instructions + environment context gating |
 | **Domain overrides** | ❌ | ✅ Browser domain matching (works across Chrome/Safari/Arc) |
 
 ### Key Insight
@@ -284,11 +284,24 @@ Prioritized by impact-to-effort ratio. Focus on what can be adopted without a fu
 For Keybreeze to compete effectively while staying lightweight and reliable:
 
 1. **Wire the 4 ported components** ✅ — all done.
-2. **Add per-app overrides** — data-driven, extensible, essential for real-world use.
+2. **Add per-app overrides** ✅ (D19) — `TargetOverride` with 7 fields, 40+ apps, wired into gating, prompting, and overlay.
 3. **Add post-generation filtering** ✅ — implemented in `CompletionController.filterSuggestion()`.
-4. **Add after-cursor prompt sectioning** ✅ — implemented in `PromptBuilder.continuationPrompt()` with `[AFTER:]` bracket marker.
-5. **Add a prediction log** — essential for debugging and iteration.
-6. **Keep the thin-client architecture** — this is Keybreeze's structural advantage for being lightweight.
-7. **Don't try to match KeyType's constrained generation** — it's brilliant but orthogonal to Keybreeze's design goals.
+4. **Add sectioned/budgeted prompting** ✅ (D19) — 6 named sections with token budgets, trailing whitespace trimming, per-app environment context gating, per-app custom instructions.
+5. **Add NSPanel overlay** ✅ (D19) — non-activating panel, caret-height font resolution, per-app overlay tuning, contrast shadow.
+6. **Add a prediction log** — essential for debugging and iteration.
+7. **Keep the thin-client architecture** — this is Keybreeze's structural advantage for being lightweight.
+8. **Don't try to match KeyType's constrained generation** — it's brilliant but orthogonal to Keybreeze's design goals.
+
+### D19 Ported (1 June 2026) — KeyType Prompting & Overlay Architecture
+
+The following KeyType-inspired improvements have been ported and wired:
+
+- **Sectioned/budgeted prompting**: `PromptBuilder` now uses named sections with token budgets (KeyType's `PromptBuilder` pattern, simplified for thin-client).
+- **NSPanel overlay**: Switched from `NSWindow` to `NSPanel` with `.nonactivatingPanel` — no more focus theft.
+- **Caret-height font resolution**: Ghost text now sizes from the caret height, not a hardcoded 14pt.
+- **Per-app overlay tuning**: `fontSizeAdjustmentFactor`, `verticalAlignmentOffset`, `overlayPreference` per app.
+- **Per-app custom prompt instructions**: Wired from `AppCompatibility` into the prompt as a section.
+- **Trailing whitespace trimming**: Prevents double-space artifacts on insertion.
+- **Contrast shadow**: Ghost text readable on both light and dark backgrounds.
 
 The goal is not to become KeyType. The goal is to be the **lightest, most responsive** system-wide autocomplete that works with the LLM infrastructure the user already has — and that can leverage larger models that KeyType's in-process architecture simply cannot run.

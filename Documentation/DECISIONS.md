@@ -213,3 +213,40 @@ Each entry uses this structure:
   - Future improvement decisions reference KeyType as the source of ideas
   - Keybreeze's strategic position: lightest, most responsive system-wide autocomplete that works with the user's existing LLM infrastructure
   - Keybreeze's unique niche: thin-client architecture that can leverage larger models (7B+) via Ollama that KeyType's in-process approach cannot run
+
+### D19 — Port KeyType Prompting and Overlay Architecture
+- **Date:** 2026-06-01
+- **Status:** Active
+- **Context:** After wiring all four Cotabby-ported components (D17), Keybreeze's prediction quality and overlay positioning still lagged behind KeyType. The prompt was a flat string concatenation without token budgeting, and the overlay used a hardcoded 14pt font with NSWindow (which could activate Keybreeze). Per-app overlay tuning (vertical offset, font size adjustment) from KeyType's `TargetOverride` was missing.
+- **Decision:** Port KeyType's sectioned/budgeted prompting and overlay architecture into Keybreeze, adapted for Keybreeze's thin-client architecture:
+
+  **Prompting (Prediction Quality):**
+  1. Restructured `PromptBuilder` with named sections (`completionInstructions`, `generalInfo`, `afterCursor`, `styleNudge`, `customInstructions`, `beforeCursor`), each with priority and min/max token budgets.
+  2. `beforeCursor` always renders last in the prompt so the model's next token is the natural continuation at the caret (KeyType ADR-017 principle).
+  3. Trailing whitespace trimming via `trimmingTrailingWhitespace()` prevents double-space artifacts on insertion.
+  4. Per-app environment context gating via `AppCompatibility.isEnvironmentContextDisabled()` strips app metadata for code editors/terminals.
+  5. Per-app custom instructions wired from `AppCompatibility.customPromptSuffix()` into the prompt as a section.
+  6. Token budget enforcement via ~4 chars/token approximation with binary-search truncation within `defaultMaxPromptTokens` (2048).
+
+  **Overlay (Positioning Quality):**
+  7. Switched from `NSWindow` to `NSPanel` with `.nonactivatingPanel` style mask — the overlay never activates Keybreeze or steals focus.
+  8. Added caret-height-based font resolution (`resolveFont()`) that sizes the field's typeface from the caret height rather than a hardcoded 14pt, matching the host app's rendered text. Falls back to system font estimation when no field font is known.
+  9. Added per-app `fontSizeAdjustmentFactor` and `verticalAlignmentOffset` from `AppCompatibility` overrides.
+  10. Added trusted caret height clamping to prevent oversized AX caret rects from producing huge ghost text.
+  11. Added contrast shadow on ghost text for readability on both light and dark backgrounds.
+
+  **AppCompatibility Extensions:**
+  12. Added `OverlayPreference` enum (`.inline`, `.textMirror`, `.hidden`) matching KeyType's overlay preference model.
+  13. Extended `TargetOverride` with `overlayPreference`, `fontSizeAdjustmentFactor`, `verticalAlignmentOffset`.
+  14. Added public API: `overlayPreference(for:)`, `fontSizeAdjustmentFactor(for:)`, `verticalAlignmentOffset(for:)`.
+
+- **Alternatives considered:**
+  - Adopting KeyType's full tokenizer-backed budgeting (rejected — requires linking llama.cpp xcframework for `ModelTokenizing`, violates thin-client principle)
+  - Adopting KeyType's multi-branch constrained generation (rejected — extraordinary complexity, raw output quality is already high with Ollama models at 1B+)
+  - Adopting KeyType's 10-package architecture (rejected — overkill for Keybreeze's scope)
+
+- **Consequences:**
+  - Prompt quality significantly improved: sectioned budgeting prevents token overflow, trailing whitespace trimming prevents insertion artifacts, per-app gating prevents code-editor bias
+  - Overlay positioning significantly improved: NSPanel prevents focus theft, caret-height font sizing matches host app text, per-app offsets fine-tune positioning
+  - `AppCompatibility` now has 3 overlay-related fields — new apps can be tuned without code changes
+  - All changes compile and are wired end-to-end (SystemWidePredictor → CompletionController → PromptBuilder, SystemWidePredictor → SuggestionOverlayWindowController)
