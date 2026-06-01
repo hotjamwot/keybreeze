@@ -150,7 +150,9 @@ final class CompletionController: ObservableObject {
 
         // State captured for the completion callback
         let capturedContext = state.textBeforeCursor
+        let capturedAfterCursor = state.textAfterCursor
         let capturedMode = currentMode?.rawValue ?? ""
+        let capturedMaxWords = maxWords
 
         activeTask = Task { [weak self] in
             guard let self else { return }
@@ -199,17 +201,33 @@ final class CompletionController: ObservableObject {
                         //   Wait until we have a full word (contains a space) or at least
                         //   10 characters before showing. This prevents flickering
                         //   partial-word tokens like "I'" → "I'm" → "I'm doing".
+                        // Apply post-generation filtering before displaying.
+                        // This strips multi-line output, garbage chars, and duplicates.
                         let draftEndsMidWord = !capturedContext.hasSuffix(" ")
                         if wasEmpty || draftEndsMidWord {
-                            Task { @MainActor in
-                                self.suggestion = accumulatedTokens
+                            if let filtered = CompletionController.filterSuggestion(
+                                accumulatedTokens,
+                                contextBeforeCursor: capturedContext,
+                                contextAfterCursor: capturedAfterCursor,
+                                maxWords: capturedMaxWords
+                            ) {
+                                Task { @MainActor in
+                                    self.suggestion = filtered
+                                }
                             }
                         } else {
                             let hasFullWord = accumulatedTokens.contains(" ")
                             let hasEnoughChars = accumulatedTokens.count >= 10
                             if hasFullWord || hasEnoughChars {
-                                Task { @MainActor in
-                                    self.suggestion = accumulatedTokens
+                                if let filtered = CompletionController.filterSuggestion(
+                                    accumulatedTokens,
+                                    contextBeforeCursor: capturedContext,
+                                    contextAfterCursor: capturedAfterCursor,
+                                    maxWords: capturedMaxWords
+                                ) {
+                                    Task { @MainActor in
+                                        self.suggestion = filtered
+                                    }
                                 }
                             }
                         }
@@ -318,6 +336,85 @@ final class CompletionController: ObservableObject {
 
     private func wordCount(in text: String) -> Int {
         text.split(separator: " ").filter { !$0.isEmpty }.count
+    }
+
+    // MARK: - Post-Generation Filtering (Tier 2)
+
+    /// Filters a raw suggestion string, returning a cleaned version or nil
+    /// if the suggestion should be suppressed entirely.
+    ///
+    /// Applied in the streaming gate before updating `self.suggestion`.
+    /// Addresses: multi-line predictions, garbage characters, excessive length,
+    /// and duplication of after-cursor text.
+    nonisolated static func filterSuggestion(
+        _ raw: String,
+        contextBeforeCursor: String,
+        contextAfterCursor: String,
+        maxWords: Int
+    ) -> String? {
+        var text = raw
+
+        // 1. Multi-line: truncate at the first newline.
+        //    The model sometimes generates newlines as hesitation tokens.
+        //    No \n stop token means these leak into the output.
+        if let newlineIdx = text.firstIndex(of: "\n") {
+            text = String(text[..<newlineIdx])
+        }
+
+        // 2. Garbage character filter: strip non-printable characters,
+        //    HTML tags, and control sequences.
+        text = text.filter { char in
+            // Allow normal printable ASCII, extended Latin, and whitespace
+            let scalar = char.unicodeScalars.first!
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) { return true }
+            if scalar.value >= 32 && scalar.value < 127 { return true } // Standard printable
+            if scalar.value >= 128 { return true } // Extended Unicode (accents, etc.)
+            return false // Control characters
+        }
+
+        // Strip HTML tags (model sometimes outputs <br>, <p>, etc.)
+        text = text.replacingOccurrences(
+            of: #"<[^>]+>"#,
+            with: "",
+            options: .regularExpression
+        )
+
+        // 3. Empty after filtering
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        // 4. Word count guard: reject if prediction is excessively long
+        let words = trimmed.split(separator: " ").filter { !$0.isEmpty }
+        if words.count > maxWords * 3 {
+            // Prediction is wildly too long — likely a generation runaway
+            return nil
+        }
+
+        // 5. Duplicate after-cursor: if the suggestion starts with text that
+        //    appears immediately after the cursor, strip the duplicate prefix.
+        if !contextAfterCursor.isEmpty {
+            let afterTrimmed = contextAfterCursor.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix(afterTrimmed) {
+                let remaining = String(trimmed.dropFirst(afterTrimmed.count))
+                    .trimmingCharacters(in: .whitespaces)
+                if remaining.isEmpty { return nil }
+                text = remaining
+            }
+        }
+
+        // 6. Starts with punctuation/dashes/ellipsis: likely garbage
+        let firstChar = text.trimmingCharacters(in: .whitespaces).first
+        if let firstChar {
+            if firstChar == "." || firstChar == "…" || firstChar == "—" || firstChar == "-" {
+                // Allow single dash if it's part of a word (e.g., "-wise")
+                let trimmedText = text.trimmingCharacters(in: .whitespaces)
+                if trimmedText.hasPrefix("...") || trimmedText.hasPrefix("…") || trimmedText.hasPrefix("—") {
+                    return nil
+                }
+            }
+        }
+
+        return text.trimmingCharacters(in: .whitespaces)
     }
 }
 

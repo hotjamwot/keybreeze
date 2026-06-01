@@ -12,7 +12,7 @@ AI agents must read this file before starting any work. Do not assume something 
 - 🚫 Blocked — cannot proceed until a dependency is resolved
 - 🎯 Planned — clear integration plan exists (see ACTIVE TASKS below)
 
-Last updated: 31 May 2026
+Last updated: 1 June 2026
 
 ---
 
@@ -46,6 +46,7 @@ Last updated: 31 May 2026
 | 17 | Dock + Cmd+Tab behavior | ⚠️ | Intermittent ViewBridge errors. |
 | 18 | Settings window close stability | 🔄 | Mitigated, still rare intermittency. |
 | 19 | Ghost overlay for third-party apps | ⚠️ | AXTextGeometryResolver wired into resolveCursorRect(). 6-branch resolver tries first, falls back to 4-tier chain. Needs testing in Chromium/Electron apps. |
+| 20 | Post-generation candidate filtering | ✅ | filterSuggestion() strips multi-line, garbage chars, HTML tags, duplicate after-cursor text, and excessively long predictions. |
 
 ---
 
@@ -53,7 +54,7 @@ Last updated: 31 May 2026
 
 1. **Mid-word completions still unreliable**: Gemma 4 E2B at temperature 0.1 struggles with partial-word inputs. The trailing space trick helps but doesn't fully solve it.
 2. **Word repetition at low temperature with repeat_penalty 1.15**: May need to go to 1.25.
-3. **No `\n` stop token causes multi-line predictions**: Acceptable for now — better than empty outputs.
+3. **No `\n` stop token causes multi-line predictions**: Mitigated by post-generation filtering (TASK 6) — newlines are now truncated before display. Still acceptable as a known model limitation.
 
 ---
 
@@ -279,9 +280,8 @@ These are documented in COMPETITIVE_COMPARISON.md Section 13, Tier 2. Do not sta
 - Create `Keybreeze/Core/AppCompatibility.swift` with a `TargetOverride` struct and default overrides table.
 - Start with: terminals (suppress), password managers (suppress), code editors (disable environment context).
 
-### TASK 6: Add post-generation candidate filtering
-- Before showing a suggestion, check: duplicates after-cursor text? Too long? Contains garbage characters?
-- Add filtering in `CompletionController.runPrediction()` before setting `suggestion`.
+### TASK 6: Add post-generation candidate filtering ✅
+- **Status:** ✅ Implemented. `CompletionController.filterSuggestion()` is a `nonisolated static` method that strips multi-line output (truncates at first `\n`), removes control characters and HTML tags, rejects excessively long predictions, strips duplicate after-cursor prefixes, and rejects garbage punctuation开头. Wired into the streaming gate in `onToken` closure.
 
 ### TASK 7: Add basic prompt sectioning
 - Split the prompt into sections: `[before cursor]` at the end, optional `[after cursor]` to prevent duplication.

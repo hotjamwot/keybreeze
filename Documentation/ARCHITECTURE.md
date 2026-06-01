@@ -1,5 +1,5 @@
 # Keybreeze — Architecture
-Last updated: 26 May 2026
+Last updated: 1 June 2026
 
 *This document serves as the technical log for Keybreeze. It outlines the application's structure, the engineering decisions made, and the "how" of the project. When you make any changes to the app, please ask the user to test the app first before you update any of the documentation.*
 
@@ -49,6 +49,7 @@ User types in TextField
 ```
 User types in external app (e.g. Obsidian, Chrome, TextEdit)
   → SystemWidePredictor (CGEventTap callback)
+    → InputSuppressionController.consumeIfNeeded() — suppress synthetic keystrokes
     → 40ms debounce
       → readAndPredict()
         → accessibility.getTextContext() — reads AX text from focused element
@@ -56,10 +57,12 @@ User types in external app (e.g. Obsidian, Chrome, TextEdit)
             Tier 1: resolved focused element (deep-nested walk)
             Tier 2: ancestor text container walk (Chromium/Electron)
             Tier 3: raw (non-resolved) focused element
-        → resolveCursorRect() — 4-tier fallback for overlay position
+        → resolveCursorRect() — 6-branch resolver + 4-tier fallback
+        → SuggestionSessionReconciler — try local advancement before server
         → controller.editorStateChanged()
           → (same prediction flow as above)
     → controller.$suggestion publishes
+      → SuggestionSessionManager.startSession() — track for local advancement
       → SuggestionOverlayWindowController.show() — floating ghost overlay
 ```
 
@@ -71,10 +74,21 @@ Three extraction strategies, tried in order:
 2. **Parameterized AXStringForRange** — more reliable in rich editors that expose it
 3. **Ancestor text container walk** — walks up the AX tree to find a parent AXTextArea/AXTextField with AXValue. Required for Chromium/Electron apps (Obsidian, VS Code, Chrome)
 
-### Cursor Rect Resolution — 4-Tier Fallback
+### Cursor Rect Resolution — 6-Branch + 4-Tier Fallback
 
 `SystemWidePredictor.resolveCursorRect()`:
 
+**Primary: 6-branch geometry resolver** (`AXTextGeometryResolver`):
+| Branch | Method | Quality | Use Case |
+|--------|--------|---------|----------|
+| 1 | BoundsForRange(loc, 0) | exact | Native apps with AX support |
+| 1.5 | AXTextMarker caret rect | exact | Chromium/WebKit fallback |
+| 2 | BoundsForRange(loc-1, 1) shift to trailing edge | derived | Editors supporting char-level bounds |
+| 2.5 | Child text-run proportional estimation | derived | Gmail, Outlook (no BoundsForRange) |
+| 3 | AXFrame + text-width estimation | estimated | Minimal AX exposure |
+| 4 | Window-frame fallback | estimated | No AX geometry available |
+
+**Fallback: 4-tier chain** (when resolver fails):
 | Tier | Source | When Used |
 |------|--------|-----------|
 | 1 | AX bounds from TextContext | Embedded cursor rect in AX data |
@@ -92,11 +106,11 @@ Floating, transparent, borderless NSWindow:
 
 ---
 
-## Cotabby-Sourced Components (Frankenstein Convergence)
+## Cotabby-Sourced Components (Frankenstein Convergence) ✅ WIRED
 
-Four architectural pillars ported from Cotabby to address specific weaknesses. All marked ⚠️ — ported but requiring live testing.
+Four architectural pillars ported from Cotabby to address specific weaknesses. All wired into active code paths as of 31 May 2026.
 
-### 1. String Reconciliation (`SuggestionSessionReconciler` + `SuggestionSessionManager`)
+### 1. String Reconciliation (`SuggestionSessionReconciler` + `SuggestionSessionManager`) ✅
 
 **Files:**
 - `SuggestionModels.swift` — Core value types: `ActiveSuggestionSession`, `FocusedInputContext`, `SuggestionOverlayGeometry`, `OverlayState`
@@ -111,9 +125,9 @@ Four architectural pillars ported from Cotabby to address specific weaknesses. A
 3. If the typed characters *don't* match (user diverges), the reconciler returns nil and we let the normal debounce→prediction flow proceed.
 4. `reconcile()` handles live AX state vs. session state — detects field switches, text selection, trailing text changes, post-Tab AX lag tolerance.
 
-**Status:** ⚠️ Code ported and integrated. Needs live testing in Typing Lab and system-wide.
+**Status:** ✅ Wired. `SuggestionSessionManager` added to `SystemWidePredictor`. Local advancement fires in `readAndPredict()` before server calls. Session lifecycle managed (start on new prediction, reset on app switch/cursor move/focus loss).
 
-### 2. Focus & Geometry Processing (`AXTextGeometryResolver` + `AXHelper` + `DisplayCoordinateConverter`)
+### 2. Focus & Geometry Processing (`AXTextGeometryResolver` + `AXHelper` + `DisplayCoordinateConverter`) ✅
 
 **Files:**
 - `AXHelper.swift` — Typed wrapper around C-based Accessibility APIs
@@ -132,11 +146,11 @@ Four architectural pillars ported from Cotabby to address specific weaknesses. A
 | 3 | AXFrame + text-width estimation | estimated | Minimal AX exposure |
 | 4 | Window-frame fallback | estimated | No AX geometry available |
 
-**Coordinate Conversion:**`DisplayCoordinateConverter` bridges CoreGraphics (top-left origin, pixel coordinates) to AppKit (bottom-left origin, point coordinates) on a per-display basis, with Retina scaling heuristics.
+**Coordinate Conversion:** `DisplayCoordinateConverter` bridges CoreGraphics (top-left origin, pixel coordinates) to AppKit (bottom-left origin, point coordinates) on a per-display basis, with Retina scaling heuristics.
 
-**Status:** ⚠️ Code ported. Not yet wired into overlay positioning pipeline.
+**Status:** ✅ Wired. `resolveCursorRect()` now tries the 6-branch resolver first via `resolveFocusedAXElement()`, then falls back to the 4-tier chain.
 
-### 3. Queue-Based Text Insertion (`SuggestionInserter` + `InputSuppressionController`)
+### 3. Queue-Based Text Insertion (`SuggestionInserter` + `InputSuppressionController`) ✅
 
 **Files:**
 - `SuggestionInserter.swift` — CGEvent Unicode keyboard synthesis with char-by-char option
@@ -148,11 +162,11 @@ Four architectural pillars ported from Cotabby to address specific weaknesses. A
 1. `InputSuppressionController.registerSyntheticInsertion()` arms a 1-second suppression window
 2. `SuggestionInserter.insert()` posts a single CGEvent keyDown/keyUp pair with Unicode string
 3. `SuggestionInserter.insertCharacterByCharacter()` posts individual characters with configurable inter-character delay (default 5ms)
-4. The event tap in `SystemWidePredictor.installEventTap()` would normally re-trigger on these synthetic events — the suppression controller consumes them silently
+4. The event tap in `SystemWidePredictor.installEventTap()` checks `suppressionController.consumeIfNeeded()` — synthetic keystrokes from the inserter are consumed silently
 
-**Status:** ⚠️ Code wired into `SystemWidePredictor` init. Suppression not yet integrated into event tap callback.
+**Status:** ✅ Wired. Event tap callback now checks `suppressionController.consumeIfNeeded()` — synthetic keystrokes from the inserter are consumed and don't trigger prediction loops.
 
-### 4. Dynamic Gating (`SuggestionAvailabilityEvaluator`)
+### 4. Dynamic Gating (`SuggestionAvailabilityEvaluator`) ✅
 
 **File:** `SuggestionAvailabilityEvaluator.swift`
 
@@ -164,9 +178,9 @@ Four architectural pillars ported from Cotabby to address specific weaknesses. A
 - Terminal app detection via `TerminalAppDetector` (hardcoded bundle ID list)
 - Input Monitoring permission
 
-**Future extension:** Cotabby's `CustomRulesCatalog` with regex-based matching for URL schemes, terminal modes, and editing scopes.
+**Future extension:** Per-app overrides with regex-based matching for URL schemes, terminal modes, and editing scopes (Tier 2).
 
-**Status:** ⚠️ Code ported. Not yet integrated into `SystemWidePredictor`'s gating checks (still uses internal `shouldProcessApp()`).
+**Status:** ✅ Wired. `shouldProcessApp()` now delegates to `SuggestionAvailabilityEvaluator.disabledReason()`. Slack removed from terminal list.
 
 ---
 
@@ -241,7 +255,7 @@ All components (`CompletionController`, `SessionViewModel`, `AggressionPreset`) 
 
 ## Known Issues
 
-1. **AX getTextContext returns nil for Chromium/Electron apps (Obsidian, VS Code, Chrome):** The ancestor container walk (`findTextContainer`) was added in this session but needs live testing. The resolved focused element in these apps is often a leaf AX node without AXValue.
-2. **Overlay positioning drift:** New `AXTextGeometryResolver` and `DisplayCoordinateConverter` are ported but not yet wired into the overlay positioning chain.
-3. **Event tap suppression:** `InputSuppressionController` is wired into `SystemWidePredictor` init but the event tap callback doesn't yet check `consumeIfNeeded()`.
-4. **SuggestionSessionManager not yet wired:** The `SuggestionSessionManager` class is defined in SessionViewModel.swift but `handleDraftChanged()` still calls the controller directly without checking if the typed characters can be consumed locally first.
+1. **Mid-word completions still unreliable:** Gemma 4 E2B at temperature 0.1 struggles with partial-word inputs. The trailing space trick helps but doesn't fully solve it.
+2. **Word repetition at low temperature with repeat_penalty 1.15:** May need to go to 1.25.
+3. **No `\n` stop token causes multi-line predictions:** Acceptable for now — better than empty outputs. Post-generation filtering (Tier 2) can address this.
+4. **Overlay positioning in Chromium/Electron apps:** 6-branch resolver wired but needs live testing in Obsidian, VS Code, Chrome.
