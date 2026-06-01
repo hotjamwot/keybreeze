@@ -1,5 +1,5 @@
 # Keybreeze vs. KeyType: Competitive Analysis
-*Last updated: 31 May 2026*
+*Last updated: 1 June 2026*
 
 This document compares Keybreeze against KeyType — the two open-source macOS menu-bar apps most relevant to Keybreeze's development. It covers architecture, generation strategy, context capture, prompting, UX, and identifies where Keybreeze is strong, where it's behind, and the highest-leverage improvements to adopt.
 
@@ -79,7 +79,7 @@ KeyType's constrained generation is its **killer feature**. By controlling the d
 | **Architecture** | Unified `AccessibilityManager` (single file) | `AccessibilityContextTracker` (AX-notification-driven) + `FocusedFieldReader` |
 | **Focus detection** | CGEventTap + idle polling (500ms) | AX-notification-driven with low-frequency safety poll |
 | **Text extraction** | 3-tier fallback (direct, parameterized, ancestor walk) | Full `TextFieldContext` (before/after cursor, selection, caret rect, EOL, RTL, app, window, domain, labels, language) |
-| **Caret resolution** | 4-tier fallback (AX bounds, retry, cached, computed) | Ported `AXCaretGeometryResolver` from Red Dot — multi-branch with quality ranking (exact/derived/estimated) |
+| **Caret resolution** | 6-branch resolver + 4-tier fallback (AXTextGeometryResolver wired) | Ported `AXCaretGeometryResolver` from Red Dot — multi-branch with quality ranking (exact/derived/estimated) |
 | **Chromium/Electron** | Ancestor container walk (needs testing) | Supported with browser web-area focus resolution |
 | **Web fields (Google Docs etc.)** | Limited | Text-mirror/multiline fallbacks (ADR-029) |
 | **Secure field exclusion** | Basic | Per-app `secureFieldExclusion` in `TargetOverride` |
@@ -93,7 +93,7 @@ KeyType's AX-notification-driven approach is the most efficient (avoids polling 
 
 | Dimension | Keybreeze | KeyType |
 |:---|:---|:---|
-| **Prompt structure** | Simple: context + instruction suffix | **Sectioned/budgeted** — 9 named sections with priority/min/max token budgets |
+| **Prompt structure** | Sectioned: context + after-cursor context + instruction suffix (✅ after-cursor added) | **Sectioned/budgeted** — 9 named sections with priority/min/max token budgets |
 | **Tokenizer-backed budgeting** | ❌ (character-based word cap) | ✅ Real tokenizer counts via `ModelRuntime` |
 | **Base vs. chat** | Branches per backend (raw for llama.cpp, chat for Ollama) | Base continuation (default) + ChatML fallback |
 | **Caret-boundary sanitization** | ❌ | ✅ Trims trailing whitespace, reconciles leading separator |
@@ -110,7 +110,7 @@ KeyType's prompting is dramatically more sophisticated. The sectioned budgeted a
 
 | Dimension | Keybreeze | KeyType |
 |:---|:---|:---|
-| **Reconciliation** | Ported `SuggestionSessionReconciler` (⚠️ not wired) | N/A (short completions, different model) |
+| **Reconciliation** | `SuggestionSessionReconciler` ✅ wired — local advancement skips server round-trip | N/A (short completions, different model) |
 | **Acceptance key** | Tab (word-by-word), Backtick (full) | Tab (word-by-word), Shift+Tab (full string) |
 | **Partial acceptance** | Planned (reconciler supports it) | Not needed (completions are short) |
 
@@ -124,7 +124,7 @@ Keybreeze's reconciler (ported from Cotabby) enables a UX that KeyType doesn't n
 | Dimension | Keybreeze | KeyType |
 |:---|:---|:---|
 | **Strategy** | CGEvent Unicode synthesis (char-by-char with delay) | **Pasteboard-based** with save/restore + ⌘V/paste-and-match-style |
-| **Input suppression** | `InputSuppressionController` (⚠️ not wired into event tap) | Tagged synthetic events so key taps ignore them |
+| **Input suppression** | `InputSuppressionController` ✅ wired into event tap — synthetic keystrokes consumed | Tagged synthetic events so key taps ignore them |
 | **Per-app workarounds** | ❌ | ✅ Paste-and-match-style, NBSP workaround, chunked injection, backspace-after-paste |
 | **Clipboard safety** | N/A | ✅ Save/restore pasteboard around insertion |
 
@@ -169,7 +169,7 @@ KeyType's prediction log and quality playbook are invaluable for iterating on co
 2. **Dual-backend flexibility** — Ollama (easy install, model management) + llama.cpp (more control, raw prompts). KeyType only supports llama.cpp.
 3. **PredictionMode (midType vs pause)** — Unique two-speed prediction: fast 4-word mid-type predictions + richer 8-word pause predictions. KeyType doesn't have this.
 4. **Streaming with mid-word gate** — Shows partial words immediately, waits for full words between boundaries. More responsive feel than KeyType's batch approach.
-5. **Already ported Cotabby components** — Reconciler, geometry resolver, inserter, evaluator are all ported (just not wired).
+5. **Ported + wired Cotabby components** — Reconciler, geometry resolver, inserter, evaluator are all ported and wired into active code paths.
 6. **Simpler codebase** — Easier to understand and modify than KeyType's 10-package architecture.
 7. **Reconciler-enabled partial acceptance** — Can offer longer predictions from larger models and let users accept word-by-word. KeyType doesn't need this because it generates short completions.
 
@@ -187,9 +187,9 @@ KeyType's prediction log and quality playbook are invaluable for iterating on co
 
 | Gap | Severity | Why It Matters |
 |:---|:---|:---|
-| **Ported components not wired** | High | Reconciler, geometry resolver, inserter suppression — all ported but unused |
+| ~~**Ported components not wired**~~ | ~~High~~ | ✅ All 4 ported components now wired (reconciler, geometry resolver, inserter suppression, evaluator) |
 | **No per-app compatibility overrides** | High | Tab/paste/overlay will break in many apps |
-| **No post-generation candidate filtering** | Medium | Raw LLM output includes garbage that should be suppressed |
+| ~~**No post-generation candidate filtering**~~ | ~~Medium~~ | ✅ Implemented — `filterSuggestion()` strips multi-line, garbage, duplicates |
 | **No tokenizer-backed prompt budgeting** | Medium | Character-based word caps don't map to actual token limits |
 | **No FIM support** | Medium | Mid-line predictions duplicate trailing text |
 | **No tests** | Medium | No safety net for regressions |
@@ -203,21 +203,21 @@ KeyType's prediction log and quality playbook are invaluable for iterating on co
 
 Prioritized by impact-to-effort ratio. Focus on what can be adopted without a full rewrite.
 
-### Tier 1: Wire What's Already Ported (Highest ROI, Low Effort)
+### Tier 1: Wire What's Already Ported ✅ COMPLETE
 
-1. **Wire `SuggestionSessionReconciler` into `handleDraftChanged()`**
+1. **Wire `SuggestionSessionReconciler` into `handleDraftChanged()`** ✅
    - Check if typed characters match the active suggestion before triggering a new LLM request.
    - Cuts redundant server requests by ~60-80% during normal typing.
 
-2. **Wire `InputSuppressionController` into the event tap callback**
+2. **Wire `InputSuppressionController` into the event tap callback** ✅
    - Call `consumeIfNeeded()` in `SystemWidePredictor.installEventTap()` to suppress synthetic keystrokes.
    - Prevents infinite loops when inserting suggestions.
 
-3. **Wire `SuggestionAvailabilityEvaluator` into `SystemWidePredictor`**
+3. **Wire `SuggestionAvailabilityEvaluator` into `SystemWidePredictor`** ✅
    - Replace internal `shouldProcessApp()` with the ported evaluator.
    - Adds terminal detection and centralized gating.
 
-4. **Wire `AXTextGeometryResolver` into overlay positioning**
+4. **Wire `AXTextGeometryResolver` into overlay positioning** ✅
    - Replace the current 4-tier cursor rect fallback with the ported 6-branch resolver.
    - Fixes overlay positioning in Chromium/Electron apps.
 
@@ -228,13 +228,15 @@ Prioritized by impact-to-effort ratio. Focus on what can be adopted without a fu
    - Start with: terminals (suppress), password managers (suppress), code editors (disable environment context).
    - Reference: KeyType `AppCompatibility` package.
 
-6. **Add post-generation candidate filtering**
+6. **Add post-generation candidate filtering** ✅
    - Before showing a suggestion, check: duplicates after-cursor text? Too long? Contains garbage characters?
    - Simpler than constrained generation but captures ~60% of the benefit.
+   - Implemented: `CompletionController.filterSuggestion()` strips multi-line, garbage chars, HTML tags, duplicate after-cursor text, excessively long predictions, and garbage punctuation.
 
-7. **Add basic prompt sectioning**
+7. **Add basic prompt sectioning** ✅
    - Split the prompt into sections: `[before cursor]` at the end, optional `[after cursor]` to prevent duplication.
    - Even without tokenizer-backed budgeting, this structure prevents the most common prompt failures.
+   - Implemented: `PromptBuilder.continuationPrompt()` accepts `textAfterCursor`. Raw mode appends `[AFTER:{text}]` bracket marker. Chat mode adds explicit "do not repeat" instruction. `CompletionController` passes `state.textAfterCursor`.
 
 8. **Add a prediction log**
    - Write every generation result and acceptance status to a log file.
@@ -271,7 +273,7 @@ Prioritized by impact-to-effort ratio. Focus on what can be adopted without a fu
 | **Ease of setup** | Requires Ollama/llama.cpp install | Lean into it — document the setup clearly, position as "works with your existing LLM setup" |
 | **Model flexibility** | Any model via Ollama | This is a strength — highlight the ability to use any GGUF via Ollama |
 | **Latency** | Process-based adds ~10-50ms HTTP overhead | Accept this tradeoff. Focus on reducing redundant requests via reconciliation |
-| **Quality** | Raw LLM output, no constraints | Add post-generation filtering (Tier 2) — captures most of the benefit without constrained generation complexity |
+| **Quality** | Raw LLM output + post-generation filtering (✅ TASK 6) + after-cursor prompt sectioning (✅ TASK 7) — captures most of the benefit without constrained generation complexity | Constrained generation, typo guard, sentence boundary |
 | **App compatibility** | Basic | Add per-app overrides (Tier 2) — this is table stakes for a system-wide tool |
 | **Unique value** | PredictionMode (mid-type vs pause), thin-client flexibility, larger model support | Double down on these — KeyType can't match them due to its in-process architecture |
 
@@ -281,11 +283,12 @@ Prioritized by impact-to-effort ratio. Focus on what can be adopted without a fu
 
 For Keybreeze to compete effectively while staying lightweight and reliable:
 
-1. **Wire the 4 ported components** — immediate, high-impact, zero new code.
+1. **Wire the 4 ported components** ✅ — all done.
 2. **Add per-app overrides** — data-driven, extensible, essential for real-world use.
-3. **Add post-generation filtering** — simple candidate quality checks before display.
-4. **Add a prediction log** — essential for debugging and iteration.
-5. **Keep the thin-client architecture** — this is Keybreeze's structural advantage for being lightweight.
-6. **Don't try to match KeyType's constrained generation** — it's brilliant but orthogonal to Keybreeze's design goals.
+3. **Add post-generation filtering** ✅ — implemented in `CompletionController.filterSuggestion()`.
+4. **Add after-cursor prompt sectioning** ✅ — implemented in `PromptBuilder.continuationPrompt()` with `[AFTER:]` bracket marker.
+5. **Add a prediction log** — essential for debugging and iteration.
+6. **Keep the thin-client architecture** — this is Keybreeze's structural advantage for being lightweight.
+7. **Don't try to match KeyType's constrained generation** — it's brilliant but orthogonal to Keybreeze's design goals.
 
 The goal is not to become KeyType. The goal is to be the **lightest, most responsive** system-wide autocomplete that works with the LLM infrastructure the user already has — and that can leverage larger models that KeyType's in-process architecture simply cannot run.

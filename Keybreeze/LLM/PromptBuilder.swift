@@ -22,6 +22,11 @@ enum PromptBuilder {
     /// Build a continuation prompt from the given context.
     /// - Parameters:
     ///   - context: Text before cursor.
+    ///   - textAfterCursor: Text that already exists after the cursor position.
+    ///     When provided, the prompt includes this context so the model avoids
+    ///     duplicating text that the user has already typed or that follows the
+    ///     cursor. This is the single most impactful change for reducing
+    ///     multi-line and duplicated suggestions (Known Issue #2).
     ///   - styleNudge: Optional style guidance.
     ///   - maxWords: Maximum words to predict.
     ///   - raw: When true, formats as raw text for the llama.cpp `/completion`
@@ -32,34 +37,42 @@ enum PromptBuilder {
     /// - Returns: The prompt string to send to the LLM.
     static func continuationPrompt(
         context: String,
+        textAfterCursor: String = "",
         styleNudge: String = "",
         maxWords: Int = 8,
         raw: Bool = false,
         systemPromptOverride: String? = nil
     ) -> String {
+        let afterTrimmed = textAfterCursor.trimmingCharacters(in: .whitespacesAndNewlines)
+
         if raw {
             // Raw completion endpoint with --no-jinja: send the context as-is,
             // with a trailing space appended if the context doesn't end with one.
             //
-            // The trailing space converts mid-word contexts ("best b") into clean
-            // word-boundary contexts ("best b "). This prevents the model from
-            // struggling with partial-word inputs at low temperature — instead
-            // of trying to complete "b" character-by-character, it predicts the
-            // most likely word following "b", which matches the user's intent.
+            // When after-cursor text is available, append it with a bracket
+            // marker. The model sees the full picture: what came before the
+            // cursor, followed by what already exists after it. This lets it
+            // predict bridge text that connects the two, rather than duplicating
+            // the after-cursor content.
             //
-            // By contrast, the old chat template approach
-            // (<start_of_turn>system/user/model) forced the instruct model into
-            // chatbot mode, producing empty responses for mid-word inputs,
-            // safety refusals for full sentences, and system prompt leakage.
-            //
-            // Bare text with repeat_penalty at low temperature produces clean
-            // natural language continuations, not HTML/code.
-            if context.hasSuffix(" ") {
-                return context
+            // Example: "The quick brown " → "The quick brown [AFTER: fox jumps]"
+            // The model then predicts "fox jumps" naturally as bridge text,
+            // instead of hallucinating "fox jumps over the lazy dog" which would
+            // duplicate the existing "fox jumps".
+            var prompt = context
+            if !afterTrimmed.isEmpty {
+                prompt += "[AFTER:\(afterTrimmed)]"
             }
-            return context + " "
+            if !prompt.hasSuffix(" ") {
+                prompt += " "
+            }
+            return prompt
         }
         var prompt = context
+        if !afterTrimmed.isEmpty {
+            prompt += "\n\nText after cursor: \(afterTrimmed)"
+            prompt += "\nDo not repeat or include the text after the cursor."
+        }
         if !styleNudge.isEmpty {
             prompt += "\n\nStyle: \(styleNudge)"
         }

@@ -135,6 +135,7 @@ final class CompletionController: ObservableObject {
         )
         let prompt = PromptBuilder.continuationPrompt(
             context: context,
+            textAfterCursor: state.textAfterCursor,
             styleNudge: styleNudge,
             maxWords: maxWords,
             raw: isRaw,
@@ -412,6 +413,34 @@ final class CompletionController: ObservableObject {
                     return nil
                 }
             }
+        }
+
+        // 7. Pure numbers / numeric garbage: reject continuations that are
+        //    mostly digits (model often defaults to numbers like "2", "100%", etc.)
+        let trimmedForNumeric = text.trimmingCharacters(in: .whitespaces)
+        let digitCount = trimmedForNumeric.filter { $0.isNumber }.count
+        let alphaCount = trimmedForNumeric.filter { $0.isLetter }.count
+        // If it's purely digits (e.g., "2", "100")
+        if digitCount == trimmedForNumeric.count && trimmedForNumeric.count <= 6 {
+            return nil
+        }
+        // If digits dominate and it's short (e.g., "100%", "19-year")
+        if trimmedForNumeric.count <= 8 && digitCount > alphaCount {
+            return nil
+        }
+        // Patterns like "19-year-old", "6'4″" — numbers mixed with separators
+        if trimmedForNumeric.count <= 12 && digitCount >= 2 && alphaCount <= 2 {
+            return nil
+        }
+
+        // 8. Very short single-word continuations that are likely wrong
+        let trimmedWords = trimmedForNumeric.split(separator: " ").filter { !$0.isEmpty }
+        if trimmedWords.count == 1, let word = trimmedWords.first {
+            let wordStr = String(word)
+            // Single character or single digit — too noisy to be useful
+            if wordStr.count <= 1 { return nil }
+            // Single word that's all punctuation/symbols
+            if wordStr.allSatisfy({ !$0.isLetter && !$0.isNumber }) { return nil }
         }
 
         return text.trimmingCharacters(in: .whitespaces)

@@ -20,6 +20,14 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
     /// during streaming when the content hasn't actually changed size.
     private var lastDisplayedText: String = ""
 
+    /// Minimum distance (in points) the cursor must move before repositioning.
+    /// Prevents the overlay from "jumping" on tiny cursor rect fluctuations.
+    private let minimumRepositionDistance: CGFloat = 8
+
+    /// The last position we actually rendered the overlay at (AppKit coordinates).
+    /// Used to enforce the minimum reposition distance.
+    private var lastRenderedOrigin: CGPoint?
+
     // MARK: Configuration
 
     /// Font size matching a typical NSFont.systemFont(ofSize: ...) for body text.
@@ -119,8 +127,27 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
         if let existingWindow = window, existingWindow.isVisible {
             // Update content view for streaming tokens
             existingWindow.contentView = hostingView
-            existingWindow.setFrame(newFrame, display: true, animate: false)
-            log.debug("✅ Overlay window reused — frame=(\(newFrame.origin.x), \(newFrame.origin.y), \(newFrame.size.width)x\(newFrame.size.height)) isVisible=\(existingWindow.isVisible)")
+
+            // Position stabilization: only reposition if the cursor has moved
+            // significantly. This prevents the overlay from "jumping" on tiny
+            // cursor rect fluctuations between keystrokes.
+            let shouldReposition: Bool
+            if let lastOrigin = lastRenderedOrigin {
+                let dx = newFrame.origin.x - lastOrigin.x
+                let dy = newFrame.origin.y - lastOrigin.y
+                let distance = sqrt(dx * dx + dy * dy)
+                shouldReposition = distance >= minimumRepositionDistance
+            } else {
+                shouldReposition = true // First show — always position
+            }
+
+            if shouldReposition {
+                existingWindow.setFrame(newFrame, display: true, animate: false)
+                lastRenderedOrigin = newFrame.origin
+                log.debug("✅ Overlay window repositioned — frame=(\(newFrame.origin.x), \(newFrame.origin.y), \(newFrame.size.width)x\(newFrame.size.height))")
+            } else {
+                log.debug("✅ Overlay window kept position (delta too small) — keeping at (\(existingWindow.frame.origin.x), \(existingWindow.frame.origin.y))")
+            }
         } else {
             // Hide any existing window state before creating new one
             hide()
@@ -145,6 +172,7 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
 
             // Show without activating Keybreeze
             overlayWindow.orderFrontRegardless()
+            lastRenderedOrigin = newFrame.origin
             log.debug("✅ Overlay window created — frame=(\(newFrame.origin.x), \(newFrame.origin.y), \(newFrame.size.width)x\(newFrame.size.height)) isVisible=\(overlayWindow.isVisible)")
         }
 
@@ -161,6 +189,7 @@ final class SuggestionOverlayWindowController: @unchecked Sendable {
         window.orderOut(nil)
         self.window = nil
         lastDisplayedText = ""
+        lastRenderedOrigin = nil  // Reset so next show() always positions
     }
 
     /// Repositions the overlay if it's currently visible, using a new cursor rect.

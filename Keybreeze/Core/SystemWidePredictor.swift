@@ -455,10 +455,22 @@ final class SystemWidePredictor {
                 cocoaAnchorFrame: anchorFrame,
                 textValue: textValue
             ) {
-                let rect = result.rect
-                log.debug("Cursor rect: Resolver branch \(result.quality.label) — (\(rect.origin.x), \(rect.origin.y), \(rect.size.width)x\(rect.size.height))")
-                lastCursorRect = rect
-                lastValidCursorRect = rect
+                // The resolver returns AppKit coordinates (bottom-left origin).
+                // Convert back to AX coordinates (top-left origin) for consistency
+                // with context.cursorRect and the overlay's coordinate conversion.
+                let appKitRect = result.rect
+                if let screen = NSScreen.screens.first(where: { $0.frame.contains(appKitRect.origin) }) {
+                    let axY = screen.frame.maxY - appKitRect.origin.y - appKitRect.height
+                    let axRect = CGRect(x: appKitRect.origin.x, y: axY, width: appKitRect.width, height: appKitRect.height)
+                    log.debug("Cursor rect: Resolver branch \(result.quality.label) — AX=(\(axRect.origin.x), \(axRect.origin.y), \(axRect.size.width)x\(axRect.size.height))")
+                    lastCursorRect = axRect
+                    lastValidCursorRect = axRect
+                } else {
+                    // Fallback: use as-is if screen lookup fails
+                    log.debug("Cursor rect: Resolver branch \(result.quality.label) (no screen) — (\(appKitRect.origin.x), \(appKitRect.origin.y), \(appKitRect.size.width)x\(appKitRect.size.height))")
+                    lastCursorRect = appKitRect
+                    lastValidCursorRect = appKitRect
+                }
                 return
             }
         }
@@ -615,6 +627,15 @@ final class SystemWidePredictor {
             return false
         }
 
+        // Check the data-driven per-app override table first.
+        // This replaces the hardcoded TerminalAppDetector and excludedBundleIDs.
+        if AppCompatibility.isSuppressed(bundleIdentifier: bundleID) {
+            let appName = appName(for: bundleID) ?? bundleID
+            setPaused(reason: "Keybreeze is disabled in \(appName)")
+            return false
+        }
+
+        // Fall back to the evaluator for system-level gating (permissions, etc.)
         if let reason = SuggestionAvailabilityEvaluator.disabledReason(
             globallyEnabled: true,
             disabledAppBundleIdentifiers: Set(excludedBundleIDs),

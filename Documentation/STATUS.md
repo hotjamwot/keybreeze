@@ -27,7 +27,7 @@ Last updated: 1 June 2026
 
 | # | Outcome | Status | Notes |
 |---|---------|--------|-------|
-| 1 | Invisible ghost text overlay | ⚠️ | Works in Typing Lab; external overlay has positioning quirks. AXTextGeometryResolver now wired (TASK 4) — needs testing in Chromium/Electron apps. |
+| 1 | Invisible ghost text overlay | ⚠️ | Works in Typing Lab; external overlay now has position stabilization (8pt deadzone prevents jumping). AXTextGeometryResolver wired (TASK 4) — needs testing in Chromium/Electron apps. |
 | 2 | Streaming prediction display | ✅ | Context-sensitive gate: mid-word shows immediately, between-words waits for full word or 10+ chars. |
 | 3 | Tab accepts word-by-word | ✅ | |
 | 4 | Full prediction acceptance (Backtick key) | ⚠️ | SuggestionInserter + InputSuppressionController wired into event tap (TASK 2). Needs end-to-end testing. |
@@ -45,8 +45,10 @@ Last updated: 1 June 2026
 | 16 | Acceptance history | ✅ | |
 | 17 | Dock + Cmd+Tab behavior | ⚠️ | Intermittent ViewBridge errors. |
 | 18 | Settings window close stability | 🔄 | Mitigated, still rare intermittency. |
-| 19 | Ghost overlay for third-party apps | ⚠️ | AXTextGeometryResolver wired into resolveCursorRect(). 6-branch resolver tries first, falls back to 4-tier chain. Needs testing in Chromium/Electron apps. |
-| 20 | Post-generation candidate filtering | ✅ | filterSuggestion() strips multi-line, garbage chars, HTML tags, duplicate after-cursor text, and excessively long predictions. |
+| 19 | Ghost overlay for third-party apps | ⚠️ | AXTextGeometryResolver wired into resolveCursorRect(). 6-branch resolver tries first, falls back to 4-tier chain. Position stabilization added (8pt deadzone). Needs testing in Chromium/Electron apps. |
+| 20 | Post-generation candidate filtering | ✅ | filterSuggestion() strips multi-line, garbage chars, HTML tags, duplicate after-cursor text, excessively long predictions, pure numbers ("2", "100%"), and single-character junk. |
+| 21 | Prompt sectioning (after-cursor context) | ✅ | PromptBuilder.continuationPrompt() now accepts textAfterCursor. Raw mode: appends `[AFTER:text]` bracket marker. Chat mode: adds explicit "do not repeat" instruction. Prevents model from generating duplicate content. |
+| 22 | Per-app compatibility overrides | ✅ | Data-driven TargetOverride table in AppCompatibility.swift. Suppresses terminals (6), code editors (13, VSCode excluded per user request), password managers (5), system utilities (5). Flags pasteboard insertion for web surfaces (7) and messaging (6). Wired into shouldProcessApp(). |
 
 ---
 
@@ -54,6 +56,7 @@ Last updated: 1 June 2026
 
 1. **Mid-word completions still unreliable**: Gemma 4 E2B at temperature 0.1 struggles with partial-word inputs. The trailing space trick helps but doesn't fully solve it.
 2. **Word repetition at low temperature with repeat_penalty 1.15**: May need to go to 1.25.
+2a. **Duplication of after-cursor text**: Mitigated by TASK 7 (after-cursor context in prompt) and TASK 6 (post-generation filtering). Model now receives `[AFTER:text]` bracket marker in raw mode. Still acceptable as a known model limitation — may need tuning per model.
 3. **No `\n` stop token causes multi-line predictions**: Mitigated by post-generation filtering (TASK 6) — newlines are now truncated before display. Still acceptable as a known model limitation.
 
 ---
@@ -275,17 +278,14 @@ These are the four highest-ROI tasks. All code already exists in the codebase �
 
 These are documented in COMPETITIVE_COMPARISON.md Section 13, Tier 2. Do not start these until Tier 1 tasks are complete and tested.
 
-### TASK 5: Add per-app compatibility overrides (data-driven)
-- Reference: KeyType `Packages/AppCompatibility/`
-- Create `Keybreeze/Core/AppCompatibility.swift` with a `TargetOverride` struct and default overrides table.
-- Start with: terminals (suppress), password managers (suppress), code editors (disable environment context).
+### TASK 5: Add per-app compatibility overrides (data-driven) ✅
+- **Status:** ✅ Implemented. `AppCompatibility.swift` provides a `TargetOverride` struct with 4 fields (`predictionEnabled`, `environmentContextDisabled`, `usePasteboardInsertion`, `customPromptSuffix`) and a data-driven override table covering 40+ apps across 6 categories. Wired into `SystemWidePredictor.shouldProcessApp()` — suppresses terminals, code editors, password managers, system utilities. `usePasteboardInsertion` and `environmentContextDisabled` flags are data-ready for future inserter/prompt builder wiring.
 
 ### TASK 6: Add post-generation candidate filtering ✅
-- **Status:** ✅ Implemented. `CompletionController.filterSuggestion()` is a `nonisolated static` method that strips multi-line output (truncates at first `\n`), removes control characters and HTML tags, rejects excessively long predictions, strips duplicate after-cursor prefixes, and rejects garbage punctuation开头. Wired into the streaming gate in `onToken` closure.
+- **Status:** ✅ Implemented. `CompletionController.filterSuggestion()` is a `nonisolated static` method with 8 filter stages: (1) multi-line truncation, (2) garbage character + HTML stripping, (3) empty check, (4) word count guard, (5) duplicate after-cursor prefix stripping, (6) punctuation/ellipsis rejection, (7) pure number/numeric garbage rejection, (8) single-character junk rejection. Wired into the streaming gate in `onToken` closure.
 
-### TASK 7: Add basic prompt sectioning
-- Split the prompt into sections: `[before cursor]` at the end, optional `[after cursor]` to prevent duplication.
-- Modify `PromptBuilder.continuationPrompt()` to accept `textAfterCursor` and include it.
+### TASK 7: Add basic prompt sectioning ✅
+- **Status:** ✅ Implemented. `PromptBuilder.continuationPrompt()` now accepts `textAfterCursor` parameter. Raw mode (llama.cpp): appends `[AFTER:{text}]` bracket marker so the model sees full context and predicts bridge text instead of duplicating. Chat mode (Ollama): adds explicit instruction "Do not repeat or include the text after the cursor." `CompletionController.runPrediction()` passes `state.textAfterCursor` to the prompt builder. Build verified.
 
 ### TASK 8: Add a prediction log
 - Write every generation result and acceptance status to `~/Library/Application Support/Keybreeze/Logs/predictions.log`.
